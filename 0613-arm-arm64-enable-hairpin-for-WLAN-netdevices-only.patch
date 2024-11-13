@@ -24,8 +24,8 @@ index 6fd7652aad87..68969e3edf83 100644
  	vg = nbp_vlan_group_rcu(p);
 -	return (((p->flags & BR_HAIRPIN_MODE) && !is_multicast_ether_addr(eth_hdr(skb)->h_dest))
 -		|| skb->dev != p->dev) &&
--		p->state == BR_STATE_FORWARDING && br_allowed_egress(vg, skb) &&
--		nbp_switchdev_allowed_egress(p, skb) &&
+-		(br_mst_is_enabled(p->br) || p->state == BR_STATE_FORWARDING) &&
+-		br_allowed_egress(vg, skb) && nbp_switchdev_allowed_egress(p, skb) &&
 -		!br_skb_isolated(p, skb);
 +
 +	if ((skb->dev != p->dev) &&

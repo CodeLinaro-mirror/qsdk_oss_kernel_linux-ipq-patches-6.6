@@ -14,8 +14,8 @@ Signed-off-by: Ram Chandra Jangir <quic_rjangir@quicinc.com>
 ---
  scripts/mod/elf.h          | 3007 ++++++++++++++++++++++++++++++++++++
  scripts/mod/mk_elfconfig.c |    4 +
- scripts/mod/modpost.h      |    4 +
- 3 files changed, 3015 insertions(+)
+ scripts/mod/modpost.h      |    5 +-
+ 3 files changed, 3015 insertions(+), 1 deletion(-)
  create mode 100644 scripts/mod/elf.h
 
 diff --git a/scripts/mod/elf.h b/scripts/mod/elf.h
@@ -3051,7 +3051,7 @@ diff --git a/scripts/mod/modpost.h b/scripts/mod/modpost.h
 index 5f94c2c9f2d9..534b018ead20 100644
 --- a/scripts/mod/modpost.h
 +++ b/scripts/mod/modpost.h
-@@ -9,7 +9,11 @@
+@@ -9,9 +9,12 @@
  #include <sys/mman.h>
  #include <fcntl.h>
  #include <unistd.h>
@@ -3060,9 +3060,11 @@ index 5f94c2c9f2d9..534b018ead20 100644
 +#else
 +#include "elf.h"
 +#endif
- 
+ #include "../../include/linux/module_symbol.h"
+-
  #include "list.h"
  #include "elfconfig.h"
+
 -- 
 2.34.1
 
