@@ -25,7 +25,7 @@ index 4ea18baebb42..a52a5ffdfe9a 100644
  };
  
  struct qcom_scm_current_perm_info {
-@@ -1603,6 +1605,159 @@ static irqreturn_t qcom_scm_irq_handler(int irq, void *data)
+@@ -1609,6 +1611,159 @@ static irqreturn_t qcom_scm_irq_handler(int irq, void *data)
  	return IRQ_HANDLED;
  }
  
@@ -185,10 +185,11 @@ index 4ea18baebb42..a52a5ffdfe9a 100644
  static int qcom_scm_probe(struct platform_device *pdev)
  {
  	struct qcom_scm *scm;
-@@ -1616,6 +1771,15 @@ static int qcom_scm_probe(struct platform_device *pdev)
+@@ -1623,7 +1778,15 @@ static int qcom_scm_probe(struct platform_device *pdev)
  	if (ret < 0)
  		return ret;
  
+-	init_completion(&scm->waitq_comp);
 +	ret = of_property_read_u32(pdev->dev.of_node, "hvc-log-cmd-id", &scm->hvc_log_cmd_id);
 +	if (ret)
 +		scm->hvc_log_cmd_id = QTI_SCM_HVC_DIAG_CMD;

@@ -44,7 +44,7 @@ diff --git a/net/ipv6/netfilter/nf_conntrack_reasm.c b/net/ipv6/netfilter/nf_con
 index b2dd48911c8d..4c0860c885c6 100644
 --- a/net/ipv6/netfilter/nf_conntrack_reasm.c
 +++ b/net/ipv6/netfilter/nf_conntrack_reasm.c
-@@ -469,6 +469,24 @@ int nf_ct_frag6_gather(struct net *net, struct sk_buff *skb, u32 user)
+@@ -470,6 +470,25 @@ int nf_ct_frag6_gather(struct net *net, struct sk_buff *skb, u32 user)
  	hdr = ipv6_hdr(skb);
  	fhdr = (struct frag_hdr *)skb_transport_header(skb);
  
@@ -66,9 +66,10 @@ index b2dd48911c8d..4c0860c885c6 100644
 +	}
 +#endif
 +
- 	skb_orphan(skb);
++	skb_orphan(skb);
  	fq = fq_find(net, fhdr->identification, user, hdr,
  		     skb->dev ? skb->dev->ifindex : 0);
+	if (fq == NULL) {
 -- 
 2.34.1
 
