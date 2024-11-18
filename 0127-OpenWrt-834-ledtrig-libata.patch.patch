@@ -77,18 +77,17 @@ index d8cc1e27a125..16c7fc72a4c4 100644
  /**
   *	ata_build_rw_tf - Build ATA taskfile for given read/write request
   *	@qc: Metadata associated with the taskfile to build
-@@ -4771,7 +4784,9 @@ void __ata_qc_complete(struct ata_queued_cmd *qc)
+@@ -4771,6 +4784,9 @@ void __ata_qc_complete(struct ata_queued_cmd *qc)
  		link->active_tag = ATA_TAG_POISON;
  		ap->nr_active_links--;
  	}
--
 +#ifdef CONFIG_ATA_LEDS
 +	ata_led_act(ap);
 +#endif
+
  	/* clear exclusive status */
  	if (unlikely(qc->flags & ATA_QCFLAG_CLEAR_EXCL &&
- 		     ap->excl_link == link))
-@@ -5494,6 +5509,9 @@ struct ata_port *ata_port_alloc(struct ata_host *host)
+@@ -5494,6 +5510,9 @@
  	ap->stats.unhandled_irq = 1;
  	ap->stats.idle_irq = 1;
  #endif
@@ -98,17 +97,11 @@ index d8cc1e27a125..16c7fc72a4c4 100644
  	ata_sff_port_init(ap);
  
  	return ap;
-@@ -5537,7 +5555,12 @@ static void ata_host_release(struct kref *kref)
+@@ -5537,7 +5555,6 @@ static void ata_host_release(struct kref *kref)
  	int i;
  
  	for (i = 0; i < host->n_ports; i++) {
 -		ata_port_free(host->ports[i]);
-+#ifdef CONFIG_ATA_LEDS
-+		if (ap->ledtrig) {
-+			led_trigger_unregister(ap->ledtrig);
-+			kfree(ap->ledtrig);
-+		};
-+#endif
  		host->ports[i] = NULL;
  	}
  	kfree(host);

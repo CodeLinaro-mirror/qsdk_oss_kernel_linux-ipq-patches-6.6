@@ -29,8 +29,8 @@ PBL Trybit Write:
 Change-Id: Ie70c927d5f7bc3562097f0475524f0ed83ffed60
 Signed-off-by: Poovendhan Selvaraj <quic_poovendh@quicinc.com>
 ---
- drivers/firmware/qcom_scm.c | 145 +++++++++++++++++++++++++++++++++++-
- 1 file changed, 144 insertions(+), 1 deletion(-)
+ drivers/firmware/qcom_scm.c | 146 +++++++++++++++++++++++++++++++++++-
+ 1 file changed, 145 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/firmware/qcom_scm.c b/drivers/firmware/qcom_scm.c
 index 98a06b08b23c..51fd2b7dca4b 100644
@@ -219,7 +219,7 @@ index 98a06b08b23c..51fd2b7dca4b 100644
  	NULL,
  };
  
-@@ -3300,6 +3437,11 @@ static int qcom_scm_probe(struct platform_device *pdev)
+@@ -3300,16 +3437,22 @@ static int qcom_scm_probe(struct platform_device *pdev)
  	if (ret < 0)
  		return ret;
  
@@ -230,8 +230,19 @@ index 98a06b08b23c..51fd2b7dca4b 100644
 +
  	data = (unsigned long)of_device_get_match_data(&pdev->dev);
  	dev_set_drvdata(&pdev->dev, (unsigned long *)data);
- 
-@@ -3399,6 +3541,7 @@ static const struct of_device_id qcom_scm_dt_match[] = {
+
+	ret = of_property_read_u32(pdev->dev.of_node, "hvc-log-cmd-id", &scm->hvc_log_cmd_id);
+	if (ret)
+		scm->hvc_log_cmd_id = QTI_SCM_HVC_DIAG_CMD;
+
+	ret = of_property_read_u32(pdev->dev.of_node, "smmu-state-cmd-id",
+				   &scm->smmu_state_cmd_id);
+	if (ret)
+		scm->smmu_state_cmd_id = QTI_SCM_SMMUSTATE_CMD;
+
++	init_completion(&scm->waitq_comp);
+	mutex_init(&scm->scm_bw_lock);
+@@ -3399,6 +3542,7 @@ static const struct of_device_id qcom_scm_dt_match[] = {
  	{ .compatible = "qcom,scm-apq8084" },
  	{ .compatible = "qcom,scm-ipq4019" },
  	{ .compatible = "qcom,scm-ipq9574", .data = (void *)(SDI_DISABLE | ABNORMAL_MAGIC)},
