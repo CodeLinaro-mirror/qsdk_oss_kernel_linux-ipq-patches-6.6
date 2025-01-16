@@ -1,0 +1,94 @@
+From e068c17e9fe08af645f51c9a02aff0737260b959 Mon Sep 17 00:00:00 2001
+From: Miquel Raynal <miquel.raynal@bootlin.com>
+Date: Fri, 15 Dec 2023 11:15:30 +0000
+Subject: [PATCH] nvmem: Simplify the ->add_cells() hook
+
+The layout entry is not used and will anyway be made useless by the new
+layout bus infrastructure coming next, so drop it. While at it, clarify
+the kdoc entry.
+
+Signed-off-by: Miquel Raynal <miquel.raynal@bootlin.com>
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@linaro.org>
+Link: https://lore.kernel.org/r/20231215111536.316972-5-srinivas.kandagatla@linaro.org
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+(cherry picked from commit 1b7c298a4ecbc28cc6ee94005734bff55eb83d22)
+
+Change-Id: I4f10ba186e3f29d3477f6890ea088c4e14c5b04c
+Signed-off-by: Saahil Tomar <quic_saahtoma@quicinc.com>
+---
+ drivers/nvmem/core.c             | 2 +-
+ drivers/nvmem/layouts/onie-tlv.c | 3 +--
+ drivers/nvmem/layouts/sl28vpd.c  | 3 +--
+ include/linux/nvmem-provider.h   | 8 +++-----
+ 4 files changed, 6 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/nvmem/core.c b/drivers/nvmem/core.c
+index ee59d42c74da..edf7cdd93dce 100644
+--- a/drivers/nvmem/core.c
++++ b/drivers/nvmem/core.c
+@@ -815,7 +815,7 @@ static int nvmem_add_cells_from_layout(struct nvmem_device *nvmem)
+ 	int ret;
+ 
+ 	if (layout && layout->add_cells) {
+-		ret = layout->add_cells(&nvmem->dev, nvmem, layout);
++		ret = layout->add_cells(&nvmem->dev, nvmem);
+ 		if (ret)
+ 			return ret;
+ 	}
+diff --git a/drivers/nvmem/layouts/onie-tlv.c b/drivers/nvmem/layouts/onie-tlv.c
+index 59fc87ccfcff..defd42d4375c 100644
+--- a/drivers/nvmem/layouts/onie-tlv.c
++++ b/drivers/nvmem/layouts/onie-tlv.c
+@@ -182,8 +182,7 @@ static bool onie_tlv_crc_is_valid(struct device *dev, size_t table_len, u8 *tabl
+ 	return true;
+ }
+ 
+-static int onie_tlv_parse_table(struct device *dev, struct nvmem_device *nvmem,
+-				struct nvmem_layout *layout)
++static int onie_tlv_parse_table(struct device *dev, struct nvmem_device *nvmem)
+ {
+ 	struct onie_tlv_hdr hdr;
+ 	size_t table_len, data_len, hdr_len;
+diff --git a/drivers/nvmem/layouts/sl28vpd.c b/drivers/nvmem/layouts/sl28vpd.c
+index 05671371f631..26c7cf21b523 100644
+--- a/drivers/nvmem/layouts/sl28vpd.c
++++ b/drivers/nvmem/layouts/sl28vpd.c
+@@ -80,8 +80,7 @@ static int sl28vpd_v1_check_crc(struct device *dev, struct nvmem_device *nvmem)
+ 	return 0;
+ }
+ 
+-static int sl28vpd_add_cells(struct device *dev, struct nvmem_device *nvmem,
+-			     struct nvmem_layout *layout)
++static int sl28vpd_add_cells(struct device *dev, struct nvmem_device *nvmem)
+ {
+ 	const struct nvmem_cell_info *pinfo;
+ 	struct nvmem_cell_info info = {0};
+diff --git a/include/linux/nvmem-provider.h b/include/linux/nvmem-provider.h
+index e5de21516387..3939991b3c5f 100644
+--- a/include/linux/nvmem-provider.h
++++ b/include/linux/nvmem-provider.h
+@@ -156,9 +156,8 @@ struct nvmem_cell_table {
+  *
+  * @name:		Layout name.
+  * @of_match_table:	Open firmware match table.
+- * @add_cells:		Will be called if a nvmem device is found which
+- *			has this layout. The function will add layout
+- *			specific cells with nvmem_add_one_cell().
++ * @add_cells:		Called to populate the layout using
++ *			nvmem_add_one_cell().
+  * @fixup_cell_info:	Will be called before a cell is added. Can be
+  *			used to modify the nvmem_cell_info.
+  * @owner:		Pointer to struct module.
+@@ -172,8 +171,7 @@ struct nvmem_cell_table {
+ struct nvmem_layout {
+ 	const char *name;
+ 	const struct of_device_id *of_match_table;
+-	int (*add_cells)(struct device *dev, struct nvmem_device *nvmem,
+-			 struct nvmem_layout *layout);
++	int (*add_cells)(struct device *dev, struct nvmem_device *nvmem);
+ 	void (*fixup_cell_info)(struct nvmem_device *nvmem,
+ 				struct nvmem_layout *layout,
+ 				struct nvmem_cell_info *cell);
+-- 
+2.34.1
+
