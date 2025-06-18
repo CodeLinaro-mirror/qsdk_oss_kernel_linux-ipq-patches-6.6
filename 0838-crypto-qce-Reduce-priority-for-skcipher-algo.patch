@@ -21,7 +21,7 @@ index 7aa8eee163bb..7addfdce2d38 100644
  	alg->encrypt			= qce_skcipher_encrypt;
  	alg->decrypt			= qce_skcipher_decrypt;
  
--	alg->base.cra_priority		= 300;
+-	alg->base.cra_priority		= 275;
 +	alg->base.cra_priority		= 10;
  	alg->base.cra_flags		= CRYPTO_ALG_ASYNC |
  					  CRYPTO_ALG_ALLOCATES_MEMORY |

@@ -7,8 +7,8 @@ Change-Id: I37dfca00def113dbdb8360eff53472ffb0e821c2
 Signed-off-by: Vishnu Vardhan Bantanahal <vishvard@qti.qualcomm.com>
 ---
  include/net/sock.h | 18 ++++++++++++++++
- net/core/sock.c    | 52 ++++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 70 insertions(+)
+ net/core/sock.c    | 42 ++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 60 insertions(+)
 
 diff --git a/include/net/sock.h b/include/net/sock.h
 index 2994446f4a75..685ae4f8ad40 100644
@@ -97,27 +97,6 @@ index 1e6ee4e6b33c..081d86a0a9b5 100644
  /**
   * sk_ns_capable - General socket capability test
   * @sk: Socket to use a capability on or through
-@@ -1570,10 +1612,20 @@ int sk_setsockopt(struct sock *sk, int level, int optname,
- 			break;
- 		}
- 
-+		if (val == sk->offload_appid) {
-+			ret = -EPERM;
-+			break;
-+		}
-+
- 		if (val)
- 			sk->offload_appid = val;
- 
- 		sk->offload = val ? 1 : 0;
-+
-+		mutex_lock(&sock_notifier.mutex);
-+		ret = raw_notifier_call_chain(&sock_notifier.notify,
-+			SOCK_OFFLOAD_NOTIFY, (void *)sk);
-+		mutex_unlock(&sock_notifier.mutex);
- 		break;
- 
- 	default:
 -- 
 2.34.1
 
