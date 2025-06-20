@@ -1,0 +1,32 @@
+From 36f246838b584eecc424ca26628731a0853e38ba Mon Sep 17 00:00:00 2001
+From: Vishnu Vardhan Bantanahal <vishvard@qti.qualcomm.com>
+Date: Thu, 12 Jun 2025 01:37:23 +0530
+Subject: [PATCH] net: Check Socket notifier return status for SO_OFFLOAD
+ option
+
+Change-Id: I2db0ffeea1395e4ca93926a9b0ff3a17669916f3
+Signed-off-by: Vishnu Vardhan Bantanahal <vishvard@qti.qualcomm.com>
+---
+ net/core/sock.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/net/core/sock.c b/net/core/sock.c
+index 081d86a0a9b5..d6d7d08aeb7b 100644
+--- a/net/core/sock.c
++++ b/net/core/sock.c
+@@ -1626,6 +1626,12 @@ int sk_setsockopt(struct sock *sk, int level, int optname,
+ 		ret = raw_notifier_call_chain(&sock_notifier.notify,
+ 			SOCK_OFFLOAD_NOTIFY, (void *)sk);
+ 		mutex_unlock(&sock_notifier.mutex);
++
++		ret = (ret == NOTIFY_OK) ? 0 : -EOPNOTSUPP;
++		if (ret) {
++			sk->offload_appid = 0;
++			sk->offload = 0;
++		}
+ 		break;
+ 
+ 	default:
+-- 
+2.34.1
+
