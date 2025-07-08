@@ -1,0 +1,35 @@
+From 23ec0b4057294d86cdefafe373b1f03568f75aff Mon Sep 17 00:00:00 2001
+From: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+Date: Fri, 25 Apr 2025 10:45:59 +0200
+Subject: [PATCH] Linux 6.6.88
+
+Link: https://lore.kernel.org/r/20250423142643.246005366@linuxfoundation.org
+Tested-by: Peter Schneider <pschneider1968@googlemail.com>
+Tested-by: Shuah Khan <skhan@linuxfoundation.org>
+Tested-by: Ron Economos <re@w6rz.net>
+Tested-by: Jon Hunter <jonathanh@nvidia.com>
+Tested-by: Mark Brown <broonie@kernel.org>
+Tested-by: Florian Fainelli <florian.fainelli@broadcom.com>
+Tested-by: Miguel Ojeda <ojeda@kernel.org>
+Tested-by: Linux Kernel Functional Testing <lkft@linaro.org>
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+---
+ Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 18ca8d458fa4..b1dfe3df7dfc 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,7 +1,7 @@
+ # SPDX-License-Identifier: GPL-2.0
+ VERSION = 6
+ PATCHLEVEL = 6
+-SUBLEVEL = 87
++SUBLEVEL = 88
+ EXTRAVERSION =
+ NAME = Pinguïn Aangedreven
+ 
+-- 
+2.34.1
+
