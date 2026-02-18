@@ -17,11 +17,11 @@ Signed-off-by: KRITHI D SHETTY <kdshetty@qti.qualcomm.com>
  net/bridge/br_private_mcast_eht.h |  2 ++
  6 files changed, 45 insertions(+), 16 deletions(-)
 
-diff --git a/include/linux/netfilter_bridge.h b/include/linux/netfilter_bridge.h
-index ee43eabae80d..169b67ab2b3b 100644
---- a/include/linux/netfilter_bridge.h
-+++ b/include/linux/netfilter_bridge.h
-@@ -37,8 +37,9 @@ enum br_mcast_event_type {
+Index: linux-6.6.116/include/linux/netfilter_bridge.h
+===================================================================
+--- linux-6.6.116.orig/include/linux/netfilter_bridge.h	2026-02-02 03:33:57.179920162 +0530
++++ linux-6.6.116/include/linux/netfilter_bridge.h	2026-02-02 03:33:57.175919966 +0530
+@@ -37,8 +37,9 @@
  struct br_mcast_event {
  	/* MCAST Group & Port */
  	u32 ifindex;
@@ -32,11 +32,11 @@ index ee43eabae80d..169b67ab2b3b 100644
  	union nf_inet_addr grp_ip;
  
  	/* Source list for IGMPv3/MLDv2 */
-diff --git a/net/bridge/br_mdb.c b/net/bridge/br_mdb.c
-index c913db91e6f2..b624e20dd77a 100644
---- a/net/bridge/br_mdb.c
-+++ b/net/bridge/br_mdb.c
-@@ -589,9 +589,6 @@ void br_mdb_notify(struct net_device *dev,
+Index: linux-6.6.116/net/bridge/br_mdb.c
+===================================================================
+--- linux-6.6.116.orig/net/bridge/br_mdb.c	2026-02-02 03:33:57.179920162 +0530
++++ linux-6.6.116/net/bridge/br_mdb.c	2026-02-02 03:33:57.175919966 +0530
+@@ -589,9 +589,6 @@
  	struct net *net = dev_net(dev);
  	struct sk_buff *skb;
  	int err = -ENOBUFS;
@@ -46,7 +46,7 @@ index c913db91e6f2..b624e20dd77a 100644
  
  	br_switchdev_mdb_notify(dev, mp, pg, type);
  
-@@ -606,6 +603,8 @@ void br_mdb_notify(struct net_device *dev,
+@@ -606,6 +603,8 @@
  	}
  
  #if IS_ENABLED(CONFIG_BRIDGE_MCAST_OFFLOAD)
@@ -55,11 +55,11 @@ index c913db91e6f2..b624e20dd77a 100644
  	/*
  	 * Notification should be generated for a (*,G) MDB entry or
  	 * an entry with STAR_EXCL flag, having a valid Port-Group pointer.
-diff --git a/net/bridge/br_multicast.c b/net/bridge/br_multicast.c
-index b9acfb23a995..c79d5b056993 100644
---- a/net/bridge/br_multicast.c
-+++ b/net/bridge/br_multicast.c
-@@ -2053,6 +2053,12 @@ int br_multicast_add_port(struct net_bridge_port *port)
+Index: linux-6.6.116/net/bridge/br_multicast.c
+===================================================================
+--- linux-6.6.116.orig/net/bridge/br_multicast.c	2026-02-02 03:33:57.179920162 +0530
++++ linux-6.6.116/net/bridge/br_multicast.c	2026-02-02 03:39:12.551442598 +0530
+@@ -2053,6 +2053,12 @@
  	if (!port->mcast_stats)
  		return -ENOMEM;
  
@@ -72,7 +72,7 @@ index b9acfb23a995..c79d5b056993 100644
  	return 0;
  }
  
-@@ -2066,11 +2072,13 @@ void br_multicast_del_port(struct net_bridge_port *port)
+@@ -2066,11 +2072,13 @@
  	spin_lock_bh(&br->multicast_lock);
  
  #if IS_ENABLED(CONFIG_BRIDGE_MCAST_OFFLOAD)
@@ -88,19 +88,26 @@ index b9acfb23a995..c79d5b056993 100644
  		br_mcast_offload_send_event((void *)port, NULL, BR_MCAST_EVENT_FLUSH_ALL);
  	}
  #endif
-@@ -2136,6 +2144,11 @@ void br_multicast_enable_port(struct net_bridge_port *port)
- 	struct net_bridge *br = port->br;
- 
- 	spin_lock_bh(&br->multicast_lock);
-+#if IS_ENABLED(CONFIG_BRIDGE_MCAST_OFFLOAD)
-+	struct net_bridge_mcast_port *pmctx = &port->multicast_ctx;
+@@ -2141,6 +2149,11 @@
+ 		spin_unlock_bh(&br->multicast_lock);
+ 		return;
+ 	}
 +
++#if IS_ENABLED(CONFIG_BRIDGE_MCAST_OFFLOAD)
 +	pmctx->mcast_flush_all = false;
 +#endif
- 	__br_multicast_enable_port_ctx(&port->multicast_ctx);
++
+ 	__br_multicast_enable_port_ctx(pmctx);
  	spin_unlock_bh(&br->multicast_lock);
  }
-@@ -2171,8 +2184,10 @@ void br_multicast_disable_port(struct net_bridge_port *port)
+@@ -2228,21 +2241,22 @@
+ 
+ void br_multicast_disable_port(struct net_bridge_port *port)
+ {
+-	br_multicast_toggle_port(port, false);
+ 	spin_lock_bh(&port->br->multicast_lock);
+ 
+ 	/*
  	 * Send FLUSH ALL Event for the given MCAST LAN port.
  	 */
  #if IS_ENABLED(CONFIG_BRIDGE_MCAST_OFFLOAD)
@@ -113,7 +120,14 @@ index b9acfb23a995..c79d5b056993 100644
  		br_mcast_offload_send_event((void *)port, NULL, BR_MCAST_EVENT_FLUSH_ALL);
  	}
  #endif
-@@ -4445,22 +4460,23 @@ void br_multicast_stop(struct net_bridge *br)
+ 
+-	__br_multicast_disable_port_ctx(&port->multicast_ctx);
+ 	spin_unlock_bh(&port->br->multicast_lock);
++	br_multicast_toggle_port(port, false);
+ }
+ 
+ static int __grp_src_delete_marked(struct net_bridge_port_group *pg)
+@@ -4535,22 +4549,23 @@
  void br_multicast_dev_del(struct net_bridge *br)
  {
  	struct net_bridge_mdb_entry *mp;
@@ -142,11 +156,11 @@ index b9acfb23a995..c79d5b056993 100644
  			br_mcast_offload_send_event((void *)p, NULL, BR_MCAST_EVENT_FLUSH_ALL);
  		}
  	}
-diff --git a/net/bridge/br_multicast_eht.c b/net/bridge/br_multicast_eht.c
-index 6e130072b87f..a515e689f9c7 100644
---- a/net/bridge/br_multicast_eht.c
-+++ b/net/bridge/br_multicast_eht.c
-@@ -233,7 +233,9 @@ static void br_multicast_del_eht_set(struct net_bridge_group_eht_set *eht_set)
+Index: linux-6.6.116/net/bridge/br_multicast_eht.c
+===================================================================
+--- linux-6.6.116.orig/net/bridge/br_multicast_eht.c	2026-02-02 03:33:57.179920162 +0530
++++ linux-6.6.116/net/bridge/br_multicast_eht.c	2026-02-02 03:33:57.179920162 +0530
+@@ -233,7 +233,9 @@
  #endif
  	}
  
@@ -156,7 +170,7 @@ index 6e130072b87f..a515e689f9c7 100644
  	rb_erase(&eht_set->rb_node, &eht_set->pg->eht_set_tree);
  	RB_CLEAR_NODE(&eht_set->rb_node);
  	hlist_add_head(&eht_set->mcast_gc.gc_node, &eht_set->br->mcast_gc_list);
-@@ -293,7 +295,9 @@ static void br_multicast_eht_set_expired(struct timer_list *t)
+@@ -293,7 +295,9 @@
  	if (RB_EMPTY_NODE(&eht_set->rb_node) || timer_pending(&eht_set->timer))
  		goto out;
  
@@ -166,7 +180,7 @@ index 6e130072b87f..a515e689f9c7 100644
  	br_multicast_del_eht_set(eht_set);
  out:
  	spin_unlock(&br->multicast_lock);
-@@ -436,7 +440,6 @@ __eht_lookup_create_set(struct net_bridge_port_group *pg,
+@@ -436,7 +440,6 @@
  	eht_set->mcast_gc.destroy = br_multicast_destroy_eht_set;
  	eht_set->pg = pg;
  	eht_set->br = pg->key.port->br;
@@ -174,7 +188,7 @@ index 6e130072b87f..a515e689f9c7 100644
  	eht_set->entry_tree = RB_ROOT;
  	timer_setup(&eht_set->timer, br_multicast_eht_set_expired, 0);
  
-@@ -444,6 +447,7 @@ __eht_lookup_create_set(struct net_bridge_port_group *pg,
+@@ -444,6 +447,7 @@
  	rb_insert_color(&eht_set->rb_node, &pg->eht_set_tree);
  
  #if IS_ENABLED(CONFIG_BRIDGE_MCAST_OFFLOAD)
@@ -182,7 +196,7 @@ index 6e130072b87f..a515e689f9c7 100644
  	if (pg->eht_event == BR_MCAST_EVENT_NONE)
  		pg->eht_event = BR_MCAST_EVENT_UPDATE;
  #endif
-@@ -623,7 +627,7 @@ static bool __eht_del_set_entries(struct net_bridge_port_group *pg,
+@@ -623,7 +627,7 @@
  		src_ent = br_multicast_find_group_src(pg, &src_ip);
  		if (!src_ent)
  			continue;
@@ -191,11 +205,11 @@ index 6e130072b87f..a515e689f9c7 100644
  		changed = true;
  	}
  
-diff --git a/net/bridge/br_private.h b/net/bridge/br_private.h
-index 15914529b071..73c07aa54356 100644
---- a/net/bridge/br_private.h
-+++ b/net/bridge/br_private.h
-@@ -140,6 +140,9 @@ struct net_bridge_mcast_port {
+Index: linux-6.6.116/net/bridge/br_private.h
+===================================================================
+--- linux-6.6.116.orig/net/bridge/br_private.h	2026-02-02 03:33:57.179920162 +0530
++++ linux-6.6.116/net/bridge/br_private.h	2026-02-02 03:33:57.179920162 +0530
+@@ -142,6 +142,9 @@
  	unsigned char			multicast_router;
  	u32				mdb_n_entries;
  	u32				mdb_max_entries;
@@ -205,7 +219,7 @@ index 15914529b071..73c07aa54356 100644
  #endif /* CONFIG_BRIDGE_IGMP_SNOOPING */
  };
  
-@@ -431,7 +434,6 @@ struct net_bridge_port {
+@@ -433,7 +436,6 @@
  	u8				sub_br_id;
  	u8				priority;
  	u8				state;
@@ -213,7 +227,7 @@ index 15914529b071..73c07aa54356 100644
  	u16				mac_lrn_cnt;
  	u16				mac_lrn_limit;
  	u16				port_no;
-@@ -525,6 +527,10 @@ enum net_bridge_opts {
+@@ -527,6 +529,10 @@
  	BROPT_MCAST_IGNORE_T_BIT,
  };
  
@@ -224,7 +238,7 @@ index 15914529b071..73c07aa54356 100644
  struct net_bridge {
  	spinlock_t			lock;
  	spinlock_t			hash_lock;
-@@ -591,6 +597,7 @@ struct net_bridge {
+@@ -594,6 +600,7 @@
  	struct work_struct		mcast_gc_work;
  #if IS_ENABLED(CONFIG_BRIDGE_MCAST_OFFLOAD)
  	struct hlist_head		mcast_rule_list;
@@ -232,11 +246,11 @@ index 15914529b071..73c07aa54356 100644
  #endif
  #endif
  
-diff --git a/net/bridge/br_private_mcast_eht.h b/net/bridge/br_private_mcast_eht.h
-index 29d45ab49f35..77889cc450fc 100644
---- a/net/bridge/br_private_mcast_eht.h
-+++ b/net/bridge/br_private_mcast_eht.h
-@@ -47,7 +47,9 @@ struct net_bridge_group_eht_set {
+Index: linux-6.6.116/net/bridge/br_private_mcast_eht.h
+===================================================================
+--- linux-6.6.116.orig/net/bridge/br_private_mcast_eht.h	2026-02-02 03:33:57.179920162 +0530
++++ linux-6.6.116/net/bridge/br_private_mcast_eht.h	2026-02-02 03:33:57.179920162 +0530
+@@ -47,7 +47,9 @@
  	struct net_bridge_port_group	*pg;
  	struct net_bridge		*br;
  	struct net_bridge_mcast_gc	mcast_gc;
@@ -246,6 +260,3 @@ index 29d45ab49f35..77889cc450fc 100644
  };
  
  #ifdef CONFIG_BRIDGE_IGMP_SNOOPING
--- 
-2.34.1
-
