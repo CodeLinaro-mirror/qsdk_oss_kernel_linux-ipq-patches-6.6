@@ -1,0 +1,29 @@
+From 2d2267fa5d1b6dbbee13819e89d41f41263b0dd1 Mon Sep 17 00:00:00 2001
+From: Luo Jie <luoj@qti.qualcomm.com>
+Date: Fri, 6 Mar 2026 14:55:16 +0800
+Subject: [PATCH] driver: clk: qcom: Correct the PPE divider bits
+
+Change-Id: Ib46e3096ef072fe300122ad57c34a419026519cc
+Signed-off-by: Luo Jie <luoj@qti.qualcomm.com>
+---
+ drivers/clk/qcom/ipq-cmn-pll.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/clk/qcom/ipq-cmn-pll.c b/drivers/clk/qcom/ipq-cmn-pll.c
+index 94ca3002aa37..fb93f9d62cbf 100644
+--- a/drivers/clk/qcom/ipq-cmn-pll.c
++++ b/drivers/clk/qcom/ipq-cmn-pll.c
+@@ -70,8 +70,8 @@
+ #define CMN_PLL_CLKS_LOCKED			BIT(8)
+ 
+ #define CMN_PLL_NSS_PPE_FREQ_CTRL		0x98
+-#define CMN_PLL_NSS_CLK_SEL			GENMASK(13, 8)
+-#define CMN_PLL_PPE_CLK_SEL			GENMASK(5, 0)
++#define CMN_PLL_PPE_CLK_SEL			GENMASK(13, 8)
++#define CMN_PLL_NSS_CLK_SEL			GENMASK(5, 0)
+ /* CMNPLL divider for NSS/PPE: 6-bit field, valid range 8-63. */
+ #define CMN_PLL_NSS_PPE_DIV_MIN			8
+ #define CMN_PLL_NSS_PPE_DIV_MAX			63
+-- 
+2.34.1
+
