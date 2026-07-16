@@ -1,0 +1,28 @@
+From 4d924585e71e63fbecdc74e17d62013753069aab Mon Sep 17 00:00:00 2001
+From: Vignesh Viswanathan <viswanat@qti.qualcomm.com>
+Date: Wed, 15 Jul 2026 12:05:19 +0530
+Subject: [PATCH] driver: bus: mhi: Fix Fuse Blower config in Makefile
+
+Fix Fuse blower config in Makefile as compilation fails if
+CONFIG_MHI_BUS is disabled.
+
+Change-Id: I1c47e22e92880468a0f76e4c038089a2b40770d4
+Signed-off-by: Vignesh Viswanathan <viswanat@qti.qualcomm.com>
+---
+ drivers/bus/mhi/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/bus/mhi/Makefile b/drivers/bus/mhi/Makefile
+index cc38a60b34fd..a38f6432c87e 100644
+--- a/drivers/bus/mhi/Makefile
++++ b/drivers/bus/mhi/Makefile
+@@ -6,5 +6,5 @@ obj-$(CONFIG_MHI_BUS_EP) += ep/
+ 
+ obj-$(CONFIG_MHI_BUS_TEST) += test/
+ 
+-obj-y += fuse_blower/
++obj-$(CONFIG_MHI_BUS) += fuse_blower/
+ obj-y += clients/
+-- 
+2.34.1
+
