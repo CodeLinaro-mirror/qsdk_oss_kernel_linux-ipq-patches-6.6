@@ -1,0 +1,40 @@
+From 7464ec2f7024d7e2d40dfc1e44aa97250365cc20 Mon Sep 17 00:00:00 2001
+From: Kathiravan Thirumoorthy <kathirav@qti.qualcomm.com>
+Date: Tue, 14 Jul 2026 21:27:17 +0530
+Subject: [PATCH] iommu/arm-smmu-qcom: include pm_runtime header file
+
+Below warnings are seen due to lack of header file inclusion.
+
+drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c: In function
+'qcom_adreno_smmu_set_prr_bit':
+drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c:142:15: error: implicit
+declaration of function 'pm_runtime_resume_and_get'
+[-Werror=implicit-function-declaration]
+  142 |         ret = pm_runtime_resume_and_get(smmu->dev);
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~
+drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c:153:9: error: implicit
+declaration of function 'pm_runtime_put_autosuspend'
+[-Werror=implicit-function-declaration]
+  153 |         pm_runtime_put_autosuspend(smmu->dev);
+
+Change-Id: I4c9c38161fca97f6fca839373f68e552c51566db
+Signed-off-by: Kathiravan Thirumoorthy <kathirav@qti.qualcomm.com>
+---
+ drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+index 30b0055a6f3c..ec8d300e109f 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+@@ -8,6 +8,7 @@
+ #include <linux/delay.h>
+ #include <linux/of_device.h>
+ #include <linux/firmware/qcom/qcom_scm.h>
++#include <linux/pm_runtime.h>
+ 
+ #include "arm-smmu.h"
+ #include "arm-smmu-qcom.h"
+-- 
+2.34.1
+

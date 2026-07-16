@@ -1,0 +1,45 @@
+From 638a59e27d825ef8679138df304c6271280a8edd Mon Sep 17 00:00:00 2001
+From: Kathiravan Thirumoorthy <kathirav@qti.qualcomm.com>
+Date: Fri, 10 Jul 2026 19:36:23 +0530
+Subject: [PATCH] iommu/arm-smmu: Add IPQ9650 SMMU-500 support with nested
+ S1+S2 translation
+
+As workaround for the TLB flush issue, nested S1+S2 translation is added
+for the QCS9100 SoC. Leverage the same for IPQ9650 since the same issue
+is observed.
+
+Change-Id: If15a88d36de0caca9472fabe8c38ca927c418210
+Signed-off-by: Kathiravan Thirumoorthy <kathirav@qti.qualcomm.com>
+---
+ drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+index 97f72f21f236..50b652ec55d0 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+@@ -898,6 +898,13 @@ static const struct qcom_smmu_match_data qcs9100_smmu_500_data = {
+ 	.s2_identity = true,
+ };
+ 
++static const struct qcom_smmu_match_data ipq9650_smmu_500_data = {
++	.impl = &qcs9100_smmu_500_impl,
++	.cfg = &qcom_smmu_impl0_cfg,
++	.client_match = qcom_smmu_actlr_client_of_match,
++	.s2_identity = true,
++};
++
+ /*
+  * Do not add any more qcom,SOC-smmu-500 entries to this list, unless they need
+  * special handling and can not be covered by the qcom,smmu-500 entry.
+@@ -927,6 +934,7 @@ static const struct of_device_id __maybe_unused qcom_smmu_impl_of_match[] = {
+ 	{ .compatible = "qcom,sm8350-smmu-500", .data = &qcom_smmu_500_impl0_data },
+ 	{ .compatible = "qcom,qcs9100-smmu-500", .data = &qcs9100_smmu_500_data },
+ 	{ .compatible = "qcom,glymur-smmu-500", .data = &qcs9100_smmu_500_data },
++	{ .compatible = "qcom,ipq9650-smmu-500", .data = &ipq9650_smmu_500_data },
+ 	{ .compatible = "qcom,sm8450-smmu-500", .data = &qcom_smmu_500_impl0_data },
+ 	{ .compatible = "qcom,smmu-500", .data = &qcom_smmu_500_impl0_data },
+ 	{ }
+-- 
+2.34.1
+

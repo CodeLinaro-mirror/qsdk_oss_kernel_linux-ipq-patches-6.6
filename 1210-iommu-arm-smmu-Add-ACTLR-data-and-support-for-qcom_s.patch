@@ -1,0 +1,76 @@
+From 0b056dec0f13be4abbd970065b392d3013f53952 Mon Sep 17 00:00:00 2001
+From: Bibek Kumar Patro <quic_bibekkum@quicinc.com>
+Date: Thu, 12 Dec 2024 20:44:02 +0530
+Subject: [PATCH] iommu/arm-smmu: Add ACTLR data and support for qcom_smmu_500
+
+Add ACTLR data table for qcom_smmu_500 including corresponding data
+entry and set prefetch value by way of a list of compatible strings.
+
+Reviewed-by: Dmitry Baryshkov <dmitry.baryshkov@linaro.org>
+Signed-off-by: Bibek Kumar Patro <quic_bibekkum@quicinc.com>
+Link: https://lore.kernel.org/r/20241212151402.159102-6-quic_bibekkum@quicinc.com
+Signed-off-by: Will Deacon <will@kernel.org>
+(cherry picked from commit 3e35c3e725de97f7870ef414cd5d6de7945d4fe7)
+
+Change-Id: Ib88816be716ca346704d6850101fc637b8db8fa3
+Signed-off-by: Kathiravan Thirumoorthy <kathirav@qti.qualcomm.com>
+---
+ drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c | 33 ++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+index 247196e0dec6..30b0055a6f3c 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+@@ -14,8 +14,40 @@
+ 
+ #define QCOM_DUMMY_VAL	-1
+ 
++/*
++ * SMMU-500 TRM defines BIT(0) as CMTLB (Enable context caching in the
++ * macro TLB) and BIT(1) as CPRE (Enable context caching in the prefetch
++ * buffer). The remaining bits are implementation defined and vary across
++ * SoCs.
++ */
++
++#define CPRE			(1 << 1)
++#define CMTLB			(1 << 0)
++#define PREFETCH_SHIFT		8
++#define PREFETCH_DEFAULT	0
++#define PREFETCH_SHALLOW	(1 << PREFETCH_SHIFT)
++#define PREFETCH_MODERATE	(2 << PREFETCH_SHIFT)
++#define PREFETCH_DEEP		(3 << PREFETCH_SHIFT)
+ #define GFX_ACTLR_PRR          (1 << 5)
+ 
++static const struct of_device_id qcom_smmu_actlr_client_of_match[] = {
++	{ .compatible = "qcom,adreno",
++			.data = (const void *) (PREFETCH_DEEP | CPRE | CMTLB) },
++	{ .compatible = "qcom,adreno-gmu",
++			.data = (const void *) (PREFETCH_DEEP | CPRE | CMTLB) },
++	{ .compatible = "qcom,adreno-smmu",
++			.data = (const void *) (PREFETCH_DEEP | CPRE | CMTLB) },
++	{ .compatible = "qcom,fastrpc",
++			.data = (const void *) (PREFETCH_DEEP | CPRE | CMTLB) },
++	{ .compatible = "qcom,sc7280-mdss",
++			.data = (const void *) (PREFETCH_SHALLOW | CPRE | CMTLB) },
++	{ .compatible = "qcom,sc7280-venus",
++			.data = (const void *) (PREFETCH_SHALLOW | CPRE | CMTLB) },
++	{ .compatible = "qcom,sm8550-mdss",
++			.data = (const void *) (PREFETCH_DEFAULT | CMTLB) },
++	{ }
++};
++
+ static struct qcom_smmu *to_qcom_smmu(struct arm_smmu_device *smmu)
+ {
+ 	return container_of(smmu, struct qcom_smmu, smmu);
+@@ -623,6 +655,7 @@ static const struct qcom_smmu_match_data qcom_smmu_500_impl0_data = {
+ 	.impl = &qcom_smmu_500_impl,
+ 	.adreno_impl = &qcom_adreno_smmu_500_impl,
+ 	.cfg = &qcom_smmu_impl0_cfg,
++	.client_match = qcom_smmu_actlr_client_of_match,
+ };
+ 
+ /*
+-- 
+2.34.1
+

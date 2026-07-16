@@ -1,0 +1,104 @@
+From 466df79b91b69e82f6670de2232add58513a46d0 Mon Sep 17 00:00:00 2001
+From: Bibek Kumar Patro <quic_bibekkum@quicinc.com>
+Date: Thu, 12 Dec 2024 20:44:01 +0530
+Subject: [PATCH] iommu/arm-smmu: Introduce ACTLR custom prefetcher settings
+
+Currently in Qualcomm SoCs the default prefetch is set to 1 which allows
+the TLB to fetch just the next page table. MMU-500 features ACTLR
+register which is implementation defined and is used for Qualcomm SoCs
+to have a custom prefetch setting enabling TLB to prefetch the next set
+of page tables accordingly allowing for faster translations.
+
+ACTLR value is unique for each SMR (Stream matching register) and stored
+in a pre-populated table. This value is set to the register during
+context bank initialisation.
+
+Reviewed-by: Dmitry Baryshkov <dmitry.baryshkov@linaro.org>
+Signed-off-by: Bibek Kumar Patro <quic_bibekkum@quicinc.com>
+Link: https://lore.kernel.org/r/20241212151402.159102-5-quic_bibekkum@quicinc.com
+Signed-off-by: Will Deacon <will@kernel.org>
+(cherry picked from commit 9fe18d825a5854f1ed6d6f91b45190d3a20f9f23)
+
+Change-Id: Ie1e43ce988975a7c6037b7524faaf283fe743c1d
+Signed-off-by: Kathiravan Thirumoorthy <kathirav@qti.qualcomm.com>
+---
+ drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c | 33 ++++++++++++++++++++++
+ drivers/iommu/arm/arm-smmu/arm-smmu-qcom.h |  1 +
+ 2 files changed, 34 insertions(+)
+
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+index 1e7e88b3ac44..247196e0dec6 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+@@ -248,14 +248,37 @@ static bool qcom_adreno_can_do_ttbr1(struct arm_smmu_device *smmu)
+ 	return true;
+ }
+ 
++static void qcom_smmu_set_actlr_dev(struct device *dev, struct arm_smmu_device *smmu, int cbndx,
++		const struct of_device_id *client_match)
++{
++	const struct of_device_id *match =
++			of_match_device(client_match, dev);
++
++	if (!match) {
++		dev_dbg(dev, "no ACTLR settings present\n");
++		return;
++	}
++
++	arm_smmu_cb_write(smmu, cbndx, ARM_SMMU_CB_ACTLR, (unsigned long)match->data);
++}
++
+ static int qcom_adreno_smmu_init_context(struct arm_smmu_domain *smmu_domain,
+ 		struct io_pgtable_cfg *pgtbl_cfg, struct device *dev)
+ {
+ 	const struct device_node *np = smmu_domain->smmu->dev->of_node;
++	struct arm_smmu_device *smmu = smmu_domain->smmu;
++	struct qcom_smmu *qsmmu = to_qcom_smmu(smmu);
++	const struct of_device_id *client_match;
++	int cbndx = smmu_domain->cfg.cbndx;
+ 	struct adreno_smmu_priv *priv;
+ 
+ 	smmu_domain->cfg.flush_walk_prefer_tlbiasid = true;
+ 
++	client_match = qsmmu->data->client_match;
++
++	if (client_match)
++		qcom_smmu_set_actlr_dev(dev, smmu, cbndx, client_match);
++
+ 	/* Only enable split pagetables for the GPU device (SID 0) */
+ 	if (!qcom_adreno_smmu_is_gpu_device(dev))
+ 		return 0;
+@@ -318,8 +341,18 @@ static const struct of_device_id qcom_smmu_client_of_match[] __maybe_unused = {
+ static int qcom_smmu_init_context(struct arm_smmu_domain *smmu_domain,
+ 		struct io_pgtable_cfg *pgtbl_cfg, struct device *dev)
+ {
++	struct arm_smmu_device *smmu = smmu_domain->smmu;
++	struct qcom_smmu *qsmmu = to_qcom_smmu(smmu);
++	const struct of_device_id *client_match;
++	int cbndx = smmu_domain->cfg.cbndx;
++
+ 	smmu_domain->cfg.flush_walk_prefer_tlbiasid = true;
+ 
++	client_match = qsmmu->data->client_match;
++
++	if (client_match)
++		qcom_smmu_set_actlr_dev(dev, smmu, cbndx, client_match);
++
+ 	return 0;
+ }
+ 
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.h b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.h
+index f3b91963e234..146d69777704 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.h
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.h
+@@ -28,6 +28,7 @@ struct qcom_smmu_match_data {
+ 	const struct qcom_smmu_config *cfg;
+ 	const struct arm_smmu_impl *impl;
+ 	const struct arm_smmu_impl *adreno_impl;
++	const struct of_device_id * const client_match;
+ };
+ 
+ #ifdef CONFIG_ARM_SMMU_QCOM_DEBUG
+-- 
+2.34.1
+

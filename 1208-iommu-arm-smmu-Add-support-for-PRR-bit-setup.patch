@@ -1,0 +1,152 @@
+From 0d40575b57d439ecf349735a6d754c409576f9d4 Mon Sep 17 00:00:00 2001
+From: Bibek Kumar Patro <quic_bibekkum@quicinc.com>
+Date: Thu, 12 Dec 2024 20:44:00 +0530
+Subject: [PATCH] iommu/arm-smmu: Add support for PRR bit setup
+
+Add an adreno-smmu-priv interface for drm/msm to call into arm-smmu-qcom
+and initiate the "Partially Resident Region" (PRR) bit setup or reset
+sequence as per request.
+
+This will be used by GPU to setup the PRR bit and related configuration
+registers through adreno-smmu private interface instead of directly
+poking the smmu hardware.
+
+Suggested-by: Rob Clark <robdclark@gmail.com>
+Signed-off-by: Bibek Kumar Patro <quic_bibekkum@quicinc.com>
+Link: https://lore.kernel.org/r/20241212151402.159102-4-quic_bibekkum@quicinc.com
+Signed-off-by: Will Deacon <will@kernel.org>
+(cherry picked from commit 7f2ef1bfc758f0f206eac863ff8ee417d5bb1493)
+
+Change-Id: Ie9a482f07b616f64aa42b4e77d582db77a44efae
+Signed-off-by: Kathiravan Thirumoorthy <kathirav@qti.qualcomm.com>
+---
+ drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c | 52 ++++++++++++++++++++++
+ drivers/iommu/arm/arm-smmu/arm-smmu.h      |  2 +
+ include/linux/adreno-smmu-priv.h           |  7 +++
+ 3 files changed, 61 insertions(+)
+
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+index a3e2be55c6a8..1e7e88b3ac44 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+@@ -14,6 +14,8 @@
+ 
+ #define QCOM_DUMMY_VAL	-1
+ 
++#define GFX_ACTLR_PRR          (1 << 5)
++
+ static struct qcom_smmu *to_qcom_smmu(struct arm_smmu_device *smmu)
+ {
+ 	return container_of(smmu, struct qcom_smmu, smmu);
+@@ -97,6 +99,47 @@ static void qcom_adreno_smmu_resume_translation(const void *cookie, bool termina
+ 	arm_smmu_cb_write(smmu, cfg->cbndx, ARM_SMMU_CB_RESUME, reg);
+ }
+ 
++static void qcom_adreno_smmu_set_prr_bit(const void *cookie, bool set)
++{
++	struct arm_smmu_domain *smmu_domain = (void *)cookie;
++	struct arm_smmu_device *smmu = smmu_domain->smmu;
++	struct arm_smmu_cfg *cfg = &smmu_domain->cfg;
++	u32 reg = 0;
++	int ret;
++
++	ret = pm_runtime_resume_and_get(smmu->dev);
++	if (ret < 0) {
++		dev_err(smmu->dev, "failed to get runtime PM: %d\n", ret);
++		return;
++	}
++
++	reg =  arm_smmu_cb_read(smmu, cfg->cbndx, ARM_SMMU_CB_ACTLR);
++	reg &= ~GFX_ACTLR_PRR;
++	if (set)
++		reg |= FIELD_PREP(GFX_ACTLR_PRR, 1);
++	arm_smmu_cb_write(smmu, cfg->cbndx, ARM_SMMU_CB_ACTLR, reg);
++	pm_runtime_put_autosuspend(smmu->dev);
++}
++
++static void qcom_adreno_smmu_set_prr_addr(const void *cookie, phys_addr_t page_addr)
++{
++	struct arm_smmu_domain *smmu_domain = (void *)cookie;
++	struct arm_smmu_device *smmu = smmu_domain->smmu;
++	int ret;
++
++	ret = pm_runtime_resume_and_get(smmu->dev);
++	if (ret < 0) {
++		dev_err(smmu->dev, "failed to get runtime PM: %d\n", ret);
++		return;
++	}
++
++	writel_relaxed(lower_32_bits(page_addr),
++				smmu->base + ARM_SMMU_GFX_PRR_CFG_LADDR);
++	writel_relaxed(upper_32_bits(page_addr),
++				smmu->base + ARM_SMMU_GFX_PRR_CFG_UADDR);
++	pm_runtime_put_autosuspend(smmu->dev);
++}
++
+ #define QCOM_ADRENO_SMMU_GPU_SID 0
+ 
+ static bool qcom_adreno_smmu_is_gpu_device(struct device *dev)
+@@ -208,6 +251,7 @@ static bool qcom_adreno_can_do_ttbr1(struct arm_smmu_device *smmu)
+ static int qcom_adreno_smmu_init_context(struct arm_smmu_domain *smmu_domain,
+ 		struct io_pgtable_cfg *pgtbl_cfg, struct device *dev)
+ {
++	const struct device_node *np = smmu_domain->smmu->dev->of_node;
+ 	struct adreno_smmu_priv *priv;
+ 
+ 	smmu_domain->cfg.flush_walk_prefer_tlbiasid = true;
+@@ -237,6 +281,14 @@ static int qcom_adreno_smmu_init_context(struct arm_smmu_domain *smmu_domain,
+ 	priv->get_fault_info = qcom_adreno_smmu_get_fault_info;
+ 	priv->set_stall = qcom_adreno_smmu_set_stall;
+ 	priv->resume_translation = qcom_adreno_smmu_resume_translation;
++	priv->set_prr_bit = NULL;
++	priv->set_prr_addr = NULL;
++
++	if (of_device_is_compatible(np, "qcom,smmu-500") &&
++			of_device_is_compatible(np, "qcom,adreno-smmu")) {
++		priv->set_prr_bit = qcom_adreno_smmu_set_prr_bit;
++		priv->set_prr_addr = qcom_adreno_smmu_set_prr_addr;
++	}
+ 
+ 	return 0;
+ }
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu.h b/drivers/iommu/arm/arm-smmu/arm-smmu.h
+index 703fd5817ec1..a4d9906d6246 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu.h
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu.h
+@@ -153,6 +153,8 @@ enum arm_smmu_cbar_type {
+ #define ARM_SMMU_SCTLR_M		BIT(0)
+ 
+ #define ARM_SMMU_CB_ACTLR		0x4
++#define ARM_SMMU_GFX_PRR_CFG_LADDR	0x6008
++#define ARM_SMMU_GFX_PRR_CFG_UADDR	0x600C
+ 
+ #define ARM_SMMU_CB_RESUME		0x8
+ #define ARM_SMMU_RESUME_TERMINATE	BIT(0)
+diff --git a/include/linux/adreno-smmu-priv.h b/include/linux/adreno-smmu-priv.h
+index c637e0997f6d..abec23c7744f 100644
+--- a/include/linux/adreno-smmu-priv.h
++++ b/include/linux/adreno-smmu-priv.h
+@@ -50,6 +50,11 @@ struct adreno_smmu_fault_info {
+  *                 the GPU driver must call resume_translation()
+  * @resume_translation: Resume translation after a fault
+  *
++ * @set_prr_bit:   [optional] Configure the GPU's Partially Resident
++ *                 Region (PRR) bit in the ACTLR register.
++ * @set_prr_addr:  [optional] Configure the PRR_CFG_*ADDR register with
++ *                 the physical address of PRR page passed from GPU
++ *                 driver.
+  *
+  * The GPU driver (drm/msm) and adreno-smmu work together for controlling
+  * the GPU's SMMU instance.  This is by necessity, as the GPU is directly
+@@ -67,6 +72,8 @@ struct adreno_smmu_priv {
+     void (*get_fault_info)(const void *cookie, struct adreno_smmu_fault_info *info);
+     void (*set_stall)(const void *cookie, bool enabled);
+     void (*resume_translation)(const void *cookie, bool terminate);
++    void (*set_prr_bit)(const void *cookie, bool set);
++    void (*set_prr_addr)(const void *cookie, phys_addr_t page_addr);
+ };
+ 
+ #endif /* __ADRENO_SMMU_PRIV_H */
+-- 
+2.34.1
+

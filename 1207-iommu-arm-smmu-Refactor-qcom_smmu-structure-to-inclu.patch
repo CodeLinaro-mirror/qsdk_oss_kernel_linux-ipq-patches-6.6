@@ -1,0 +1,69 @@
+From 693455e88f1bf4df95faccf2d89537240fa62ac2 Mon Sep 17 00:00:00 2001
+From: Bibek Kumar Patro <quic_bibekkum@quicinc.com>
+Date: Thu, 12 Dec 2024 20:43:59 +0530
+Subject: [PATCH] iommu/arm-smmu: Refactor qcom_smmu structure to include
+ single pointer
+
+qcom_smmu_match_data is static and constant so refactor qcom_smmu to
+store single pointer to qcom_smmu_match_data instead of replicating
+multiple child members of the same and handle the further dereferences
+in the places that want them.
+
+Suggested-by: Robin Murphy <robin.murphy@arm.com>
+Reviewed-by: Dmitry Baryshkov <dmitry.baryshkov@linaro.org>
+Reviewed-by: Rob Clark <robdclark@gmail.com>
+Signed-off-by: Bibek Kumar Patro <quic_bibekkum@quicinc.com>
+Link: https://lore.kernel.org/r/20241212151402.159102-3-quic_bibekkum@quicinc.com
+Signed-off-by: Will Deacon <will@kernel.org>
+(cherry picked from commit 445d7a8ed90e1725d148f2ce0f87d3ef3dd5f7ff)
+
+Change-Id: I0cbdbf118d9491366dd110c02d3e50f8e541db2c
+Signed-off-by: Kathiravan Thirumoorthy <kathirav@qti.qualcomm.com>
+---
+ drivers/iommu/arm/arm-smmu/arm-smmu-qcom-debug.c | 2 +-
+ drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c       | 2 +-
+ drivers/iommu/arm/arm-smmu/arm-smmu-qcom.h       | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom-debug.c b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom-debug.c
+index bb89d49adf8d..e9798b133cbb 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom-debug.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom-debug.c
+@@ -22,7 +22,7 @@ void qcom_smmu_tlb_sync_debug(struct arm_smmu_device *smmu)
+ 	if (__ratelimit(&rs)) {
+ 		dev_err(smmu->dev, "TLB sync timed out -- SMMU may be deadlocked\n");
+ 
+-		cfg = qsmmu->cfg;
++		cfg = qsmmu->data->cfg;
+ 		if (!cfg)
+ 			return;
+ 
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+index 3d0313669796..a3e2be55c6a8 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+@@ -495,7 +495,7 @@ static struct arm_smmu_device *qcom_smmu_create(struct arm_smmu_device *smmu,
+ 		return ERR_PTR(-ENOMEM);
+ 
+ 	qsmmu->smmu.impl = impl;
+-	qsmmu->cfg = data->cfg;
++	qsmmu->data = data;
+ 
+ 	return &qsmmu->smmu;
+ }
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.h b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.h
+index 593910567b88..f3b91963e234 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.h
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.h
+@@ -8,7 +8,7 @@
+ 
+ struct qcom_smmu {
+ 	struct arm_smmu_device smmu;
+-	const struct qcom_smmu_config *cfg;
++	const struct qcom_smmu_match_data *data;
+ 	bool bypass_quirk;
+ 	u8 bypass_cbndx;
+ 	u32 stall_enabled;
+-- 
+2.34.1
+
