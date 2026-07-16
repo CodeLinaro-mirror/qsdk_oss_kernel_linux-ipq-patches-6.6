@@ -1,0 +1,29 @@
+From 813650d4e0e90617eeb0d8e6cc0de66afbe1bd03 Mon Sep 17 00:00:00 2001
+From: Sridharan S N <sridsn@qti.qualcomm.com>
+Date: Thu, 16 Jul 2026 11:20:08 +0530
+Subject: [PATCH] mtd: rawnand: add nand part MX35UF2G24AD-Z4I8
+
+Change-Id: I8a2d3dd99d83304db282d7ab34b35342397baa75
+Signed-off-by: Sridharan S N <sridsn@qti.qualcomm.com>
+---
+ drivers/mtd/nand/raw/nand_ids.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/mtd/nand/raw/nand_ids.c b/drivers/mtd/nand/raw/nand_ids.c
+index d0a7f4cee454..06f9c07074ed 100644
+--- a/drivers/mtd/nand/raw/nand_ids.c
++++ b/drivers/mtd/nand/raw/nand_ids.c
+@@ -156,6 +156,10 @@ struct nand_flash_dev nand_flash_ids[] = {
+ 		{ .id = {0xc2, 0x94} },
+ 		SZ_2K, SZ_128, SZ_128K, 0, 2, 128, NAND_ECC_INFO(8, SZ_512)},
+ 
++	{"MX35UF2G24AD-Z4I8 SPI NAND 2G 1.8V",
++		{ .id = {0xc2, 0xe4} },
++		SZ_2K, SZ_256, SZ_128K, 0, 2, 128, NAND_ECC_INFO(8, SZ_512)},
++
+ 	{"TH58NYG3S0H 8G 1.8V 8-bit",
+ 		{ .id = {0x98, 0xa3, 0x91, 0x26} },
+ 		SZ_4K, SZ_1K, SZ_256K, 0, 4, 256, NAND_ECC_INFO(8, SZ_512)},
+-- 
+2.34.1
+
