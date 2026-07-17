@@ -1,0 +1,44 @@
+From 8c1d8001f8d9fd593324f1c6853e8f89c23767dc Mon Sep 17 00:00:00 2001
+From: Sourav Poddar <souravp@qti.qualcomm.com>
+Date: Mon, 13 Jul 2026 14:27:43 +0530
+Subject: [PATCH] [net] Fix reduced cache size for skb recycler enabled
+
+There is a difference of 4M between traditional 512M profile and mem=balanced profile. This patch fixes the same.
+
+Change-Id: Id970d191219b6fd2fb598da8b522e521290ffb35
+Signed-off-by: Sourav Poddar <souravp@qti.qualcomm.com>
+---
+ net/core/skbuff.c | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/net/core/skbuff.c b/net/core/skbuff.c
+index b5d06a1a90ed..20587c155de5 100644
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -113,9 +113,11 @@ struct kmem_cache *skb_data_cache_2100;
+  * @profile:    enum skb_mem_profile value for this entry
+  *
+  * With CONFIG_SKB_RECYCLER:
+- *   value      = SKB_RECYCLE_SIZE for all profiles
+- *   cache_size = __SKB_CACHE_SZ(2100)  for optimized/balanced (256M/512M)
+- *   cache_size = SKB_RECYCLE_SIZE       for high (1G, both caches equal)
++ * value      = SKB_RECYCLE_SIZE for all profiles
++ * cache_size = __SKB_CACHE_SZ(__SKB_VAL_REDUCED) for optimized/balanced (256M/512M)
++ * cache_size = __SKB_CACHE_SZ(CONFIG_SKB_RECYCLE_SIZE) for high (1G)
++ *
++ * All three profiles produce cache_size = 2176 when CONFIG_SKB_RECYCLE_SIZE=1856.
+  *
+  * Without CONFIG_SKB_RECYCLER:
+  *   value      = __SKB_CACHE_SZ(1984)  for 64-bit (LP64)
+@@ -149,7 +151,7 @@ static unsigned int skb_recycle_size = CONFIG_SKB_RECYCLE_SIZE;
+ #if defined(CONFIG_SKB_RECYCLER)
+ #define __SKB_VAL		CONFIG_SKB_RECYCLE_SIZE
+ #define __SKB_VAL_REDUCED	1856
+-#define __SKB_CACHE_REDUCED	__SKB_CACHE_SZ(2100)
++#define __SKB_CACHE_REDUCED	__SKB_CACHE_SZ(__SKB_VAL_REDUCED)
+ #define __SKB_CACHE_HIGH	__SKB_CACHE_SZ(CONFIG_SKB_RECYCLE_SIZE)
+ #else /* !CONFIG_SKB_RECYCLER */
+ #ifdef __LP64__
+-- 
+2.34.1
+
