@@ -1,0 +1,83 @@
+From aa0d8d5c1e7f1771da684b787ed2aa6e14eafd0f Mon Sep 17 00:00:00 2001
+From: Prateek Sharma <prsha@qti.qualcomm.com>
+Date: Tue, 30 Jun 2026 11:37:21 +0530
+Subject: [PATCH] netfilter: nf_conntrack: Make esp enable sysctl as per net.
+
+Limitation: The nf_conntrack_esp_enabled_handler syncs the
+last-written netns value into the global nf_ct_esp_enabled,
+but if multiple netns instances write different values,
+the global will reflect only the last writer.
+
+Change-Id: I86cd16ebd567afe852c6d33322312c8ff218979e
+Signed-off-by: Prateek Sharma <prsha@qti.qualcomm.com>
+---
+ include/net/netns/conntrack.h           |  1 +
+ net/netfilter/nf_conntrack_standalone.c | 24 ++++++++++++++++++++++--
+ 2 files changed, 23 insertions(+), 2 deletions(-)
+
+diff --git a/include/net/netns/conntrack.h b/include/net/netns/conntrack.h
+index b90a4f4287d5..aadfc200741f 100644
+--- a/include/net/netns/conntrack.h
++++ b/include/net/netns/conntrack.h
+@@ -88,6 +88,7 @@ struct nf_esp_net {
+ 	spinlock_t id_list_lock;
+ 	struct list_head id_list;
+ 	unsigned int esp_timeouts[ESP_CT_MAX];
++	int esp_enabled;
+ };
+ #endif
+ 
+diff --git a/net/netfilter/nf_conntrack_standalone.c b/net/netfilter/nf_conntrack_standalone.c
+index 2e2038c68ef9..e386d74ffa6f 100644
+--- a/net/netfilter/nf_conntrack_standalone.c
++++ b/net/netfilter/nf_conntrack_standalone.c
+@@ -612,6 +612,26 @@ nf_conntrack_hash_sysctl(struct ctl_table *table, int write,
+ 	return ret;
+ }
+ 
++#ifdef CONFIG_NF_CT_PROTO_ESP
++static int nf_conntrack_esp_enabled_handler(struct ctl_table *table, int write,
++					    void __user *buffer, size_t *lenp, loff_t *ppos)
++{
++	int ret;
++
++	/* Let the standard handler update the per-netns .data field */
++	ret = proc_dointvec(table, write, buffer, lenp, ppos);
++	if (ret)
++		return ret;
++
++	if (write) {
++		/* Sync the new value into the global */
++		nf_ct_esp_enabled = *(unsigned int *)table->data;
++	}
++
++	return 0;
++}
++#endif
++
+ static struct ctl_table_header *nf_ct_netfilter_header;
+ 
+ enum nf_ct_sysctl_index {
+@@ -1031,10 +1051,9 @@ static struct ctl_table nf_ct_sysctl_table[] = {
+ #ifdef CONFIG_NF_CT_PROTO_ESP
+ 	[NF_SYSCTL_CT_PROTO_ESP_ENABLED] = {
+ 		.procname	= "nf_conntrack_esp_enabled",
+-		.data		= &nf_ct_esp_enabled,
+ 		.maxlen		= sizeof(int),
+ 		.mode		= 0644,
+-		.proc_handler	= proc_dointvec,
++		.proc_handler	= nf_conntrack_esp_enabled_handler,
+ 	},
+ 	[NF_SYSCTL_CT_PROTO_TIMEOUT_ESP_UNREPLIED] = {
+ 		.procname	= "nf_conntrack_esp_timeout_unreplied",
+@@ -1163,6 +1182,7 @@ static void nf_conntrack_standalone_init_esp_sysctl(struct net *net,
+ #ifdef CONFIG_NF_CT_PROTO_ESP
+ 	struct nf_esp_net *en = nf_esp_pernet(net);
+ 
++	table[NF_SYSCTL_CT_PROTO_ESP_ENABLED].data = &en->esp_enabled;
+ 	table[NF_SYSCTL_CT_PROTO_TIMEOUT_ESP_UNREPLIED].data = &en->esp_timeouts[ESP_CT_UNREPLIED];
+ 	table[NF_SYSCTL_CT_PROTO_TIMEOUT_ESP_REPLIED].data = &en->esp_timeouts[ESP_CT_REPLIED];
+ #endif
+-- 
+2.34.1
+
