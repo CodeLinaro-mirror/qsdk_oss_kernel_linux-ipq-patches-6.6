@@ -1,0 +1,85 @@
+From 8ab5cfa54bc79e8490387269ed50759e80660b00 Mon Sep 17 00:00:00 2001
+From: Sridharan S N <sridsn@qti.qualcomm.com>
+Date: Wed, 22 Jul 2026 08:05:42 +0530
+Subject: [PATCH] rpmsg: glink: validate OPEN channel name NUL-termination in
+ rx_defer
+
+A remote processor sending a GLINK_CMD_OPEN command can supply a channel
+name that contains no NUL terminator within the declared length.  When
+qcom_glink_rx_defer() allocates and fills the glink_defer_cmd buffer the
+allocation is exactly sized to the declared length (after 8-byte
+alignment), so kzalloc() zeroes only the slack bytes that exist for
+non-exact-fit slab sizes.  For exact-fit sizes (extra = 40, 104, 232 or
+488 on arm64, producing 64-, 128-, 256- and 512-byte kmalloc objects)
+there are no slack bytes and the name bytes fill the object completely.
+
+The deferred worker then passes msg->data to qcom_glink_rx_open() as a
+plain C string.  strcmp() and kstrdup() both call strlen() on that
+pointer, walking past the end of the dcmd allocation into the adjacent
+slab object until a NUL byte is found.  This constitutes:
+
+  - a kernel heap out-of-bounds read (information disclosure: adjacent
+    slab object bytes are copied into channel->name by kstrdup() and
+    may be exposed through driver log paths), and
+  - a potential kernel fault if the walk crosses an unmapped page
+    boundary (denial of service / device reload).
+
+Fix: in qcom_glink_rx_defer(), after copying the raw FIFO bytes into
+dcmd but before queuing it, validate that:
+  1. extra > 0 (name cannot be zero-length),
+  2. extra <= GLINK_NAME_SIZE (matches the transmit-side cap in
+     qcom_glink_send_open_req()), and
+  3. memchr(dcmd->msg.data, NUL, extra) finds a NUL terminator within
+     the declared length.
+
+If validation fails, free dcmd, advance the RX FIFO (so the interrupt
+handler does not re-process the same malformed message on the next
+interrupt), log an error, and return -EINVAL.
+
+This is the earliest point at which the declared length (extra) is
+still available for a precise memchr check; by the time the deferred
+worker calls qcom_glink_rx_open() only the raw char * pointer remains.
+
+Change-Id: Ide1489dfaa671dab3e52e88c61cb90d647bd6b16
+Signed-off-by: Sridharan S N <sridsn@qti.qualcomm.com>
+---
+ drivers/rpmsg/qcom_glink_native.c | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/drivers/rpmsg/qcom_glink_native.c b/drivers/rpmsg/qcom_glink_native.c
+index 5f748c09226d..e4c23a256408 100644
+--- a/drivers/rpmsg/qcom_glink_native.c
++++ b/drivers/rpmsg/qcom_glink_native.c
+@@ -985,6 +985,29 @@ static int qcom_glink_rx_defer(struct qcom_glink *glink, size_t extra)
+ 
+ 	qcom_glink_rx_peek(glink, &dcmd->msg, 0, sizeof(dcmd->msg) + extra);
+ 
++	/*
++	 * For OPEN commands, the remote-supplied channel name must be
++	 * NUL-terminated within the declared length and must not exceed
++	 * GLINK_NAME_SIZE (matching the transmit-side check in
++	 * qcom_glink_send_open_req()).
++	 * Without this check, strcmp() and kstrdup() in qcom_glink_rx_open()
++	 * walk past the end of the dcmd allocation into the adjacent slab
++	 * object (heap disclosure / kernel fault on unmapped boundary).
++	 * Advance the FIFO before returning so the interrupt handler does
++	 * not re-process the same malformed message.
++	 */
++	if (le16_to_cpu(dcmd->msg.cmd) == GLINK_CMD_OPEN) {
++		if (extra == 0 || extra > GLINK_NAME_SIZE ||
++		    !memchr(dcmd->msg.data, '\0', extra)) {
++			dev_err(glink->dev,
++				"OPEN channel name invalid (len=%zu)\n", extra);
++			kfree(dcmd);
++			qcom_glink_rx_advance(glink,
++					      ALIGN(sizeof(struct glink_msg) + extra, 8));
++			return -EINVAL;
++		}
++	}
++
+ 	rx_defer.cmd = le16_to_cpu(dcmd->msg.cmd);
+ 	rx_defer.ktime = ktime_to_ms(ktime_get());
+ 	rx_defer.param1 = le16_to_cpu(dcmd->msg.param1);
+-- 
+2.34.1
+
