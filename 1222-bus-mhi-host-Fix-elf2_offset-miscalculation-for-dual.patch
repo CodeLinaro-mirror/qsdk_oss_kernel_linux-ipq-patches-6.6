@@ -1,0 +1,53 @@
+From 8631fe7c631d955ce661069871569d72b6e8de4a Mon Sep 17 00:00:00 2001
+From: Vignesh Viswanathan <viswanat@qti.qualcomm.com>
+Date: Thu, 30 Jul 2026 15:33:49 +0530
+Subject: [PATCH] bus: mhi: host: Fix elf2_offset miscalculation for dual-ELF
+ firmware
+
+In mhi_fw_load_handler(), when a second ELF header is detected exactly
+sbl_size bytes into the firmware blob, fw_data/fw_sz are advanced past
+the SBL so they point directly at the second ELF. However, elf2_offset
+was subsequently set to mhi_cntrl->sbl_size again, double counting the
+SBL length even though elf2_data (== fw_data) already starts at the
+second ELF.
+
+This inflated elf2_offset fed into mhi_analyze_elf_for_ro_segments(),
+which computes num_ro_segments as (elf2_offset + first_rw_offset - 1)
+/ seg_len. The extra sbl_size pushed num_ro_segments one segment past
+the true RO/RW boundary, causing a segment that actually falls under
+an RW-flagged ELF program header to be treated as read-only and
+shared across all MHI endpoints reusing the same firmware image.
+
+Since fw_data/fw_sz were already advanced past the SBL, the second
+ELF starts at offset 0 relative to them. Set elf2_offset to 0 in this
+branch instead of mhi_cntrl->sbl_size.
+
+Fixes: 7f430ed22e42 ("mhi: Optimize firmware memory with RO segment sharing")
+Change-Id: Ibf86f5dad81dea2c524a41b383941fc8a4b4fe10
+Signed-off-by: Vignesh Viswanathan <viswanat@qti.qualcomm.com>
+---
+ drivers/bus/mhi/host/boot.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/bus/mhi/host/boot.c b/drivers/bus/mhi/host/boot.c
+index d3b9ef41df74..48b29d9edff2 100644
+--- a/drivers/bus/mhi/host/boot.c
++++ b/drivers/bus/mhi/host/boot.c
+@@ -1000,9 +1000,12 @@ void mhi_fw_load_handler(struct mhi_controller *mhi_cntrl)
+ 
+ 			/* Determine scenario and find second ELF */
+ 			if (fw_data != original_fw_data) {
+-				/* Dual ELF detected at sbl_size */
++				/* Dual ELF detected at sbl_size. fw_data/fw_sz were
++				 * already advanced past the SBL above, so the second
++				 * ELF starts at offset 0 relative to fw_data.
++				 */
+ 				elf2_data = fw_data;
+-				elf2_offset = mhi_cntrl->sbl_size;
++				elf2_offset = 0;
+ 				dev_dbg(dev, "Dual ELF detected at sbl_size\n");
+ 			} else {
+ 				/* Need to find second ELF manually */
+-- 
+2.34.1
+
