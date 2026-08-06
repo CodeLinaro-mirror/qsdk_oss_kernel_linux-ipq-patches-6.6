@@ -1,0 +1,42 @@
+From 82af3b3cf1dc113ce91508ad80d7ac2375add717 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Wed, 17 Jun 2026 16:27:15 +0530
+Subject: [PATCH] =?UTF-8?q?drivers:=20mtd:=20unset=20the=20DISABLE=5FSTATU?=
+ =?UTF-8?q?S=5FAFTER=5FWRITE=C2=A0bit?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The DISABLE_STATUS_AFTER_WRITE bit in QPIC_NAND_DEV0_CFG0
+controls whether the controller skips the status read
+after a program operation.
+
+If this bit is set, the controller does not perform the
+status read automatically and software must issue an
+explicit (vendor-specific) status read.
+
+Clear this bit to ensure the controller performs the
+status read as part of the write flow and avoids the
+need for additional handling.
+
+Change-Id: Ic812f04e8f57ce85ca7701e4a347401104645b23
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/mtd/nand/raw/qcom_nandc.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/drivers/mtd/nand/raw/qcom_nandc.c b/drivers/mtd/nand/raw/qcom_nandc.c
+index 3b2c74a4e76a..14cb01862f43 100644
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -3071,7 +3071,6 @@ static int qcom_nand_attach_chip(struct nand_chip *chip)
+ 	 */
+ 	if (nandc->props->is_serial_nand) {
+ 		num_addr_cycle = 3;
+-		dsbl_sts_aftr_write = 1;
+ 		wr_rd_bsy_gap = 20;
+ 		recovery_cycle = 0;
+ 	}
+-- 
+2.34.1
+
