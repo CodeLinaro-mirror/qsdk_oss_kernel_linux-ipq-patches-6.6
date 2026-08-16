@@ -1,0 +1,93 @@
+From 5eae8636631f2b681a9470f7b2313cd7dd041ee1 Mon Sep 17 00:00:00 2001
+From: Devi Priya <devipriy@qti.qualcomm.com>
+Date: Fri, 31 Jul 2026 12:05:19 +0530
+Subject: [PATCH] cpufreq: Initialize cpufreq only for online CPUs
+
+cpufreq currently iterates over all present CPUs during
+initialization using for_each_present_cpu(). When booted with
+maxcpus=0, only CPU0 is brought online, while CPU4 belonging to
+gold cluster is marked present but offline.
+
+As a result, cpufreq attempts to register policies for offline
+CPUs, causing probe failures for the GOLD cluster.
+
+Replace for_each_present_cpu() with for_each_oneline_cpu to
+ensure cpufreq is initialized only for CPUs that have been brought
+online.
+
+Change-Id: I52e780c1c771723b0a5258111f042dc65af7c9ad
+Signed-off-by: Devi Priya <devipriy@qti.qualcomm.com>
+---
+ drivers/cpufreq/cpufreq-dt.c         | 9 +++++++--
+ drivers/cpufreq/qcom-cpufreq-hw.c    | 2 +-
+ drivers/cpufreq/qcom-cpufreq-nvmem.c | 7 ++++---
+ 3 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/cpufreq/cpufreq-dt.c b/drivers/cpufreq/cpufreq-dt.c
+index 2a968e62ea56..f21e8ed2c99e 100644
+--- a/drivers/cpufreq/cpufreq-dt.c
++++ b/drivers/cpufreq/cpufreq-dt.c
+@@ -317,8 +317,13 @@ static int dt_cpufreq_probe(struct platform_device *pdev)
+ 	struct cpufreq_dt_platform_data *data = dev_get_platdata(&pdev->dev);
+ 	int ret, cpu;
+ 
+-	/* Request resources early so we can return in case of -EPROBE_DEFER */
+-	for_each_present_cpu(cpu) {
++	/*
++	 * Init cpufreq only for online CPUs: a present-but-offline CPU
++	 * (maxcpus=N) may have no clock configured in hardware for
++	 * it, so probing it here would abort init for the CPUs that are
++	 * actually online.
++	 */
++	for_each_online_cpu(cpu) {
+ 		ret = dt_cpufreq_early_init(&pdev->dev, cpu);
+ 		if (ret)
+ 			goto err;
+diff --git a/drivers/cpufreq/qcom-cpufreq-hw.c b/drivers/cpufreq/qcom-cpufreq-hw.c
+index bcf88dd0b1d0..e78b06955216 100644
+--- a/drivers/cpufreq/qcom-cpufreq-hw.c
++++ b/drivers/cpufreq/qcom-cpufreq-hw.c
+@@ -305,7 +305,7 @@ static void qcom_get_related_cpus(int index, struct cpumask *m)
+ 	struct of_phandle_args args;
+ 	int cpu, ret;
+ 
+-	for_each_present_cpu(cpu) {
++	for_each_online_cpu(cpu) {
+ 		cpu_np = of_cpu_device_node_get(cpu);
+ 		if (!cpu_np)
+ 			continue;
+diff --git a/drivers/cpufreq/qcom-cpufreq-nvmem.c b/drivers/cpufreq/qcom-cpufreq-nvmem.c
+index f96c41ce61af..679fbd18c8a3 100644
+--- a/drivers/cpufreq/qcom-cpufreq-nvmem.c
++++ b/drivers/cpufreq/qcom-cpufreq-nvmem.c
+@@ -310,7 +310,8 @@ static int qcom_cpufreq_probe(struct platform_device *pdev)
+ 	}
+ 	of_node_put(np);
+ 
+-	for_each_present_cpu(cpu) {
++	/* Configure OPPs only for online CPUs */
++	for_each_online_cpu(cpu) {
+ 		struct dev_pm_opp_config config = {
+ 			.supported_hw = NULL,
+ 		};
+@@ -355,7 +356,7 @@ static int qcom_cpufreq_probe(struct platform_device *pdev)
+ 	dev_err(cpu_dev, "Failed to register platform device\n");
+ 
+ free_opp:
+-	for_each_present_cpu(cpu)
++	for_each_online_cpu(cpu)
+ 		dev_pm_opp_clear_config(drv->cpus[cpu].opp_token);
+ 	return ret;
+ }
+@@ -367,7 +368,7 @@ static void qcom_cpufreq_remove(struct platform_device *pdev)
+ 
+ 	platform_device_unregister(cpufreq_dt_pdev);
+ 
+-	for_each_present_cpu(cpu)
++	for_each_online_cpu(cpu)
+ 		dev_pm_opp_clear_config(drv->cpus[cpu].opp_token);
+ }
+ 
+-- 
+2.34.1
+
