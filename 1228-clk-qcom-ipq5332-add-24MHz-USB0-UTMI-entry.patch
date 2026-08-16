@@ -1,0 +1,30 @@
+From 98ebd47be278ec62ed947852f1af4fc3cb01fdf9 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Tue, 11 Aug 2026 14:59:45 +0530
+Subject: [PATCH] clk: qcom: ipq5332: add 24MHz USB0 UTMI entry
+
+Add a 24MHz frequency table entry to gcc_usb0_mock_utmi_clk_src.
+This allows the USB0 mock UTMI clock source to select the XO
+derived 24MHz rate when required by the clock configuration.
+
+Change-Id: I5a66abbb73011f328da32d4f9b9dba566497ba26
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/clk/qcom/gcc-ipq5332.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/clk/qcom/gcc-ipq5332.c b/drivers/clk/qcom/gcc-ipq5332.c
+index 7b9d5b8a2104..00413cb3c483 100644
+--- a/drivers/clk/qcom/gcc-ipq5332.c
++++ b/drivers/clk/qcom/gcc-ipq5332.c
+@@ -972,6 +972,7 @@ static struct clk_rcg2 gcc_usb0_master_clk_src = {
+ };
+ 
+ static const struct freq_tbl ftbl_gcc_usb0_mock_utmi_clk_src[] = {
++	F(24000000, P_XO, 1, 0, 0),
+ 	F(60000000, P_GPLL4_OUT_AUX, 10, 1, 2),
+ 	{ }
+ };
+-- 
+2.34.1
+
