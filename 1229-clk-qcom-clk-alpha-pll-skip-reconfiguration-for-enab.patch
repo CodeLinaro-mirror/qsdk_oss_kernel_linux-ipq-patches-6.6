@@ -1,0 +1,42 @@
+From 5fbd872c7c0a1c304bf925df01549a841dad7b29 Mon Sep 17 00:00:00 2001
+From: Devi Priya <devipriy@qti.qualcomm.com>
+Date: Tue, 11 Aug 2026 16:05:54 +0530
+Subject: [PATCH] clk: qcom: clk-alpha-pll: skip reconfiguration for enabled
+ PLLs
+
+In IPQ9650, the bootloader configures the APSS Zonda PLL
+and switches the CPU clusters to the APSS PLL.
+Re-running the complete PLL configuration sequence during APSS
+PLL initialization can temporarily disrupt the active CPU clock
+source, resulting in system hang during boot.
+
+Hence avoid reconfiguring the PLLs that are already enabled
+by skipping the reset and configuration sequence when the PLL is
+found to be running.
+
+Change-Id: I110fa74326ed817455045ccf2f60b3bf2f6c3085
+Signed-off-by: Devi Priya <devipriy@qti.qualcomm.com>
+---
+ drivers/clk/qcom/clk-alpha-pll.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/clk/qcom/clk-alpha-pll.c b/drivers/clk/qcom/clk-alpha-pll.c
+index 1d5368d2244a..8956af3dba55 100644
+--- a/drivers/clk/qcom/clk-alpha-pll.c
++++ b/drivers/clk/qcom/clk-alpha-pll.c
+@@ -2091,6 +2091,12 @@ EXPORT_SYMBOL_GPL(clk_alpha_pll_postdiv_lucid_5lpe_ops);
+ void clk_zonda_pll_configure(struct clk_alpha_pll *pll, struct regmap *regmap,
+ 			     const struct alpha_pll_config *config)
+ {
++	/* Check if the PLL is already enabled */
++	if (trion_pll_is_enabled(pll, regmap)) {
++		pr_debug("Zonda PLL is already enabled, skipping configuration\n");
++		return;
++	}
++
+ 	clk_alpha_pll_write_config(regmap, PLL_L_VAL(pll), config->l);
+ 	clk_alpha_pll_write_config(regmap, PLL_ALPHA_VAL(pll), config->alpha);
+ 	clk_alpha_pll_write_config(regmap, PLL_CONFIG_CTL(pll), config->config_ctl_val);
+-- 
+2.34.1
+
