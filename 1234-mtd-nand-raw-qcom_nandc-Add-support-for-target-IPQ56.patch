@@ -1,0 +1,47 @@
+From 6dc15bc7f1042887a3d20d7912cb4800b0e5266c Mon Sep 17 00:00:00 2001
+From: Ananya Ghosh <ananghos@qti.qualcomm.com>
+Date: Thu, 6 Aug 2026 15:15:54 +0530
+Subject: [PATCH] mtd: nand: raw: qcom_nandc: Add support for target IPQ5610
+
+Change-Id: I99410ad1745a7bd8b8a5c61a7d9e6eb86b5f72b9
+Signed-off-by: Ananya Ghosh <ananghos@qti.qualcomm.com>
+---
+ drivers/mtd/nand/raw/qcom_nandc.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/drivers/mtd/nand/raw/qcom_nandc.c b/drivers/mtd/nand/raw/qcom_nandc.c
+index 14cb01862f43..25420a9ec77e 100644
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -4387,6 +4387,17 @@ static const struct qcom_nandc_props ipq5210_nandc_props = {
+ 	.dev_cmd_reg_start = 0x7000,
+ };
+ 
++static const struct qcom_nandc_props ipq5610_nandc_props = {
++	.ecc_modes = (ECC_BCH_4BIT | ECC_BCH_8BIT),
++	.is_bam = true,
++	.is_serial_nand = true,
++	.qpic_v2 = true,
++	.is_serial_training = true,
++	.quad_mode = true,
++	.page_scope = true,
++	.dev_cmd_reg_start = 0x7000,
++};
++
+ static const struct qcom_nandc_props ipq9574_nandc_props = {
+ 	.ecc_modes = (ECC_BCH_4BIT | ECC_BCH_8BIT),
+ 	.is_bam = true,
+@@ -4443,6 +4454,10 @@ static const struct of_device_id qcom_nandc_of_match[] = {
+ 		.compatible = "qcom,ipq5210-nand",
+ 		.data = &ipq5210_nandc_props,
+ 	},
++	{
++		.compatible = "qcom,ipq5610-nand",
++		.data = &ipq5610_nandc_props,
++	},
+ 	{
+ 		.compatible = "qcom,ipq9574-nand",
+ 		.data = &ipq9574_nandc_props,
+-- 
+2.34.1
+
