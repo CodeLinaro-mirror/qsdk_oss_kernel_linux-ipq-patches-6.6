@@ -1,0 +1,32 @@
+From fb3931d0c5f371d2fa1dfab846176ca5341183ab Mon Sep 17 00:00:00 2001
+From: Dhairya Khale <dkhale@qti.qualcomm.com>
+Date: Fri, 21 Aug 2026 16:51:43 +0530
+Subject: [PATCH] net: Setting SKB_RECYCLE_SIZE for 256M builds on runtime
+
+Change-Id: I23133d8e2069039bb143ae01c6e5baacb207532c
+Signed-off-by: Dhairya Khale <dkhale@qti.qualcomm.com>
+---
+ include/linux/skbuff.h | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/include/linux/skbuff.h b/include/linux/skbuff.h
+index 35df8d005d1a..84e429ad760a 100644
+--- a/include/linux/skbuff.h
++++ b/include/linux/skbuff.h
+@@ -402,6 +402,13 @@ struct skb_profile_size {
+ 
+ extern const struct skb_profile_size *skb_active_profile;
+ 
++#ifdef CONFIG_SKB_RECYCLER
++#if (CONFIG_IPQ_MEM_PROFILE == 256) && (CONFIG_SKB_RECYCLE_SIZE != 1664)
++#undef CONFIG_SKB_RECYCLE_SIZE
++#define CONFIG_SKB_RECYCLE_SIZE	1856
++#endif
++#endif
++
+ #ifndef CONFIG_MAX_SKB_FRAGS
+ # define CONFIG_MAX_SKB_FRAGS 17
+ #endif
+-- 
+2.34.1
+
