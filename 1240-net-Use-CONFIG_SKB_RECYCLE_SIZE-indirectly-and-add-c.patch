@@ -1,0 +1,73 @@
+From 3220bcc9707a979c61cdb853e9a418993e05d423 Mon Sep 17 00:00:00 2001
+From: Dhairya Khale <dkhale@qti.qualcomm.com>
+Date: Tue, 1 Sep 2026 23:33:23 +0530
+Subject: [PATCH] net: Use CONFIG_SKB_RECYCLE_SIZE indirectly and add case for
+ 256M builds.
+
+Change-Id: I787ad8aebe4683966570903616514159a928c14d
+Signed-off-by: Dhairya Khale <dkhale@qti.qualcomm.com>
+---
+ include/linux/skbuff.h |  7 -------
+ net/core/skbuff.c      | 14 +++++++++-----
+ 2 files changed, 9 insertions(+), 12 deletions(-)
+
+diff --git a/include/linux/skbuff.h b/include/linux/skbuff.h
+index 84e429ad760a..35df8d005d1a 100644
+--- a/include/linux/skbuff.h
++++ b/include/linux/skbuff.h
+@@ -402,13 +402,6 @@ struct skb_profile_size {
+ 
+ extern const struct skb_profile_size *skb_active_profile;
+ 
+-#ifdef CONFIG_SKB_RECYCLER
+-#if (CONFIG_IPQ_MEM_PROFILE == 256) && (CONFIG_SKB_RECYCLE_SIZE != 1664)
+-#undef CONFIG_SKB_RECYCLE_SIZE
+-#define CONFIG_SKB_RECYCLE_SIZE	1856
+-#endif
+-#endif
+-
+ #ifndef CONFIG_MAX_SKB_FRAGS
+ # define CONFIG_MAX_SKB_FRAGS 17
+ #endif
+diff --git a/net/core/skbuff.c b/net/core/skbuff.c
+index ae3633a748b6..ba641b75af88 100644
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -105,8 +105,12 @@ struct kmem_cache *skb_data_cache_2100;
+ #include "skbuff_debug.h"
+ 
+ #if defined(CONFIG_SKB_RECYCLER)
+-static unsigned int skb_recycle_size = CONFIG_SKB_RECYCLE_SIZE;
+-#define SKB_RECYCLE_SIZE skb_recycle_size
++#if (CONFIG_IPQ_MEM_PROFILE == 256) && (CONFIG_SKB_RECYCLE_SIZE != 1664)
++#define SKB_RECYCLE_SIZE	1856
++#else
++#define SKB_RECYCLE_SIZE	CONFIG_SKB_RECYCLE_SIZE
++#endif
++static unsigned int skb_recycle_size = SKB_RECYCLE_SIZE;
+ #endif
+ 
+ /*
+@@ -130,16 +134,16 @@ static unsigned int skb_recycle_size = CONFIG_SKB_RECYCLE_SIZE;
+ #endif
+ 
+ #if defined(CONFIG_SKB_RECYCLER)
+-#define __SKB_CACHE_HIGH	__SKB_CACHE_SZ(CONFIG_SKB_RECYCLE_SIZE)
++#define __SKB_CACHE_HIGH	__SKB_CACHE_SZ(SKB_RECYCLE_SIZE)
+ #if (CONFIG_SKB_RECYCLE_SIZE == 1664)
+ #define __SKB_CACHE_REDUCED	__SKB_CACHE_HIGH
+ #undef __SKB_VAL
+ #undef __SKB_VAL_REDUCED
+-#define __SKB_VAL		CONFIG_SKB_RECYCLE_SIZE
++#define __SKB_VAL		SKB_RECYCLE_SIZE
+ #define __SKB_VAL_REDUCED	__SKB_VAL
+ 
+ #else /* CONFIG_SKB_RECYCLE_SIZE != 1664 */
+-#define __SKB_CACHE_REDUCED	__SKB_CACHE_SZ(2100)
++#define __SKB_CACHE_REDUCED	__SKB_CACHE_SZ(__SKB_VAL_REDUCED)
+ #endif
+ 
+ #else /* !CONFIG_SKB_RECYCLER */
+-- 
+2.34.1
+
