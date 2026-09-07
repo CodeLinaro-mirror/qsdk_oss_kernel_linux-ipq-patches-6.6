@@ -1,0 +1,70 @@
+From d4b0f540b1eb5ea859935d12609bc1bf81697e69 Mon Sep 17 00:00:00 2001
+From: Luo Jie <luoj@qti.qualcomm.com>
+Date: Mon, 20 Jul 2026 18:15:59 +0800
+Subject: [PATCH] driver: clk: qcom: Add IPQ5610 CMN PLL driver
+
+Change-Id: I7d5e66e9fb6533f6ed6d3754af39269de122203b
+Signed-off-by: Luo Jie <luoj@qti.qualcomm.com>
+---
+ .../bindings/clock/qcom,ipq9574-cmn-pll.yaml   |  1 +
+ drivers/clk/qcom/ipq-cmn-pll.c                 | 18 ++++++++++++++++++
+ 2 files changed, 19 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/clock/qcom,ipq9574-cmn-pll.yaml b/Documentation/devicetree/bindings/clock/qcom,ipq9574-cmn-pll.yaml
+index 09ee84b41eb2..4a7633149b45 100644
+--- a/Documentation/devicetree/bindings/clock/qcom,ipq9574-cmn-pll.yaml
++++ b/Documentation/devicetree/bindings/clock/qcom,ipq9574-cmn-pll.yaml
+@@ -28,6 +28,7 @@ properties:
+       - qcom,ipq5210-cmn-pll
+       - qcom,ipq5332-cmn-pll
+       - qcom,ipq5424-cmn-pll
++      - qcom,ipq5610-cmn-pll
+       - qcom,ipq9574-cmn-pll
+       - qcom,ipq9650-cmn-pll
+ 
+diff --git a/drivers/clk/qcom/ipq-cmn-pll.c b/drivers/clk/qcom/ipq-cmn-pll.c
+index e3680fa91125..0a9e71a13f04 100644
+--- a/drivers/clk/qcom/ipq-cmn-pll.c
++++ b/drivers/clk/qcom/ipq-cmn-pll.c
+@@ -61,6 +61,7 @@
+ #include <dt-bindings/clock/qcom,ipq5210-cmn-pll.h>
+ #include <dt-bindings/clock/qcom,ipq5332-cmn-pll.h>
+ #include <dt-bindings/clock/qcom,ipq5424-cmn-pll.h>
++#include <dt-bindings/clock/qcom,ipq5610-cmn-pll.h>
+ #include <dt-bindings/clock/qcom,ipq9650-cmn-pll.h>
+ 
+ #define CMN_PLL_REFCLK_SRC_SELECTION		0x28
+@@ -229,6 +230,22 @@ static const struct cmn_pll_fixed_output_clk ipq5210_output_clks[] = {
+ 	{ /* Sentinel */ }
+ };
+ 
++static const struct cmn_pll_fixed_output_clk ipq5610_output_clks[] = {
++	CLK_PLL_OUTPUT(IPQ5610_XO_24MHZ_CLK, "xo-24mhz", 24000000UL),
++	CLK_PLL_OUTPUT(IPQ5610_SLEEP_32KHZ_CLK, "sleep-32khz", 32000UL),
++	CLK_PLL_GATE(IPQ5610_PCS_31P25MHZ_CLK, "pcs-31p25mhz", 31250000UL, CLK31P25M_EN_BIT),
++	CLK_PLL_GATE(IPQ5610_ETH0_50MHZ_CLK, "eth0-50mhz", 50000000UL, CLK50M_EN_BIT),
++	CLK_PLL_GATE(IPQ5610_ETH1_50MHZ_CLK, "eth1-50mhz", 50000000UL, CLK50M_EN_BIT2_BIT),
++	CLK_PLL_GATE(IPQ5610_ETH2_50MHZ_CLK, "eth2-50mhz", 50000000UL, CLK50M_EN_BIT3_BIT),
++	CLK_PLL_GATE(IPQ5610_EPHY_50MHZ_CLK, "ephy-50mhz", 50000000UL, CLK250M_EN_BIT),
++	CLK_PLL_GATE(IPQ5610_ETH_25MHZ_CLK, "eth-25mhz", 25000000UL, CLK25M_EN_BIT),
++	CLK_PLL_OUTPUT(IPQ5610_NSS_CLK, "nss", 0),
++	CLK_PLL_OUTPUT(IPQ5610_PPE_CLK, "ppe", 0),
++	CLK_PLL_OUTPUT(IPQ5610_PON_CLK, "pon", 0),
++	CLK_PLL_OUTPUT(IPQ5610_EPHY_RAW_CLK, "ephy-raw", 0),
++	{ /* Sentinel */ }
++};
++
+ static const struct cmn_pll_fixed_output_clk ipq9650_output_clks[] = {
+ 	CLK_PLL_OUTPUT(IPQ9650_XO_24MHZ_CLK, "xo-24mhz", 24000000UL),
+ 	CLK_PLL_OUTPUT(IPQ9650_SLEEP_32KHZ_CLK, "sleep-32khz", 32000UL),
+@@ -1733,6 +1750,7 @@ static const struct of_device_id ipq_cmn_pll_clk_ids[] = {
+ 	{ .compatible = "qcom,ipq5210-cmn-pll", .data = &ipq5210_output_clks },
+ 	{ .compatible = "qcom,ipq5332-cmn-pll", .data = &ipq5332_output_clks },
+ 	{ .compatible = "qcom,ipq5424-cmn-pll", .data = &ipq5424_output_clks },
++	{ .compatible = "qcom,ipq5610-cmn-pll", .data = &ipq5610_output_clks },
+ 	{ .compatible = "qcom,ipq9574-cmn-pll", .data = &ipq9574_output_clks },
+ 	{ .compatible = "qcom,ipq9650-cmn-pll", .data = &ipq9650_output_clks },
+ 	{ }
+-- 
+2.34.1
+
