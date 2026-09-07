@@ -1,0 +1,43 @@
+From c1ac56ee1a2f0167661c9978aff469b418f22948 Mon Sep 17 00:00:00 2001
+From: Poovendhan Selvaraj <poovendh@qti.qualcomm.com>
+Date: Fri, 4 Sep 2026 23:47:32 +0530
+Subject: [PATCH] drivers: soc: qcom: add QTI_HW_KEY_TME_DIST config option
+
+Add a new QTI_HW_KEY_TME_DIST kernel config option. When enabled,
+hw_key.c derives the HW key via direct TME IPC and distributes it to
+GPCE, in place of the existing SCM-derived keyring path, so that key
+material is never exposed to software.
+
+Change-Id: Id61623764fa17b14e5bb8f19bc297f3115457b67
+Signed-off-by: Poovendhan Selvaraj <poovendh@qti.qualcomm.com>
+---
+ drivers/soc/qcom/Kconfig | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/soc/qcom/Kconfig b/drivers/soc/qcom/Kconfig
+index 23d846a286c0..9e65d36f1cec 100644
+--- a/drivers/soc/qcom/Kconfig
++++ b/drivers/soc/qcom/Kconfig
+@@ -401,9 +401,19 @@ config QTI_LICENSE_MANAGER
+ config QTI_HW_KEY
+ 	bool "QTI HW Key driver"
+ 	select KEYS
++	select QTI_HW_KEY_TME_DIST if OPTEE && QCOM_TMELCOM
+ 	help
+ 	  This driver requests HW Key and stores in kernel keyring
+ 
++config QTI_HW_KEY_TME_DIST
++	bool "Derive and distribute HW key to crypto engine via TME IPC"
++	depends on QTI_HW_KEY && OPTEE && QCOM_TMELCOM
++	help
++	  When enabled, hw_key.c derives the HW key via direct TME IPC and
++	  distributes it to GPCE, replacing the existing SCM-derived
++	  keyring path so that key material is never exposed to
++	  software.
++
+ config QCOM_TMEL_LOG
+ 	tristate "QCOM TMEL Log driver"
+ 	help
+-- 
+2.34.1
+
