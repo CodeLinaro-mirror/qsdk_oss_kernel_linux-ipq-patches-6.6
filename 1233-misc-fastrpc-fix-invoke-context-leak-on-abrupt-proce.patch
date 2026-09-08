@@ -1,0 +1,81 @@
+From d757d6abf413fb313e78ecc343ec8e52edb63876 Mon Sep 17 00:00:00 2001
+From: Abhinav Parihar <parihar@qti.qualcomm.com>
+Date: Mon, 31 Aug 2026 11:49:09 +0530
+Subject: [PATCH] misc: fastrpc: fix invoke context leak on abrupt process exit
+
+fastrpc_context_alloc() takes a reference on struct fastrpc_user via
+fastrpc_user_get() for every invoke context it creates. If the owning
+thread gives up on an invoke with -ETIMEDOUT, or the context is left
+in fl->interrupted, that reference is never dropped unless the
+context is later freed through fastrpc_context_put().
+
+If the process exits abruptly before the DSP responds (or the
+response never arrives), these leftover contexts stay parked on
+fl->pending/fl->interrupted forever. Because each of them holds a
+reference on fl, fl->refcount never reaches zero, so the unconditional
+cleanup in fastrpc_user_free() -- which would otherwise free these
+contexts along with any DMA maps they reference -- never runs. This
+is a permanent kernel memory leak.
+
+It also cannot be recovered later via SSR: fastrpc_device_release()
+unconditionally removes fl from cctx->users, so a subsequent SSR's
+fastrpc_notify_users() walk over cctx->users will never find this fl
+again to reap its stuck contexts.
+
+Fix this by having fastrpc_device_release() reclaim any leftover
+fl->pending/fl->interrupted contexts itself, right after calling
+fastrpc_release_current_dsp_process(). That call is expected to tear
+down the DSP-side process counterpart, so anything still left on
+these lists at this point is safe to release. If the DSP-side release
+itself fails, that is a separate problem that needs its own
+investigation, not a reason to keep leaking this process's contexts.
+
+The leftover entries are moved to a local list with
+list_splice_tail_init() under fl->lock and processed after dropping
+the lock, since fastrpc_context_put() can recurse into
+fastrpc_free_map() -> spin_lock(&map->fl->lock), which would deadlock
+if called while fl->lock is still held.
+
+Change-Id: Iff75870f1623061e7c990c8a25c037e65a153bbe
+Signed-off-by: Abhinav Parihar <parihar@qti.qualcomm.com>
+(cherry picked from commit 2042cbe5e6c2d68e57ce2541d47b6e6849ca3dab)
+---
+ drivers/misc/fastrpc.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/drivers/misc/fastrpc.c b/drivers/misc/fastrpc.c
+index 3a1dcbbb1823..1bb402b9622e 100644
+--- a/drivers/misc/fastrpc.c
++++ b/drivers/misc/fastrpc.c
+@@ -1788,10 +1788,28 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
+ {
+ 	struct fastrpc_user *fl = (struct fastrpc_user *)file->private_data;
+ 	struct fastrpc_channel_ctx *cctx = fl->cctx;
++	struct fastrpc_invoke_ctx *ctx, *n;
++	struct list_head leftover;
+ 	unsigned long flags;
+ 
+ 	fastrpc_release_current_dsp_process(fl);
+ 
++	/*
++	 * fastrpc_release_current_dsp_process() is expected to tear down the
++	 * DSP-side process counterpart, so anything still in fl->pending or
++	 * fl->interrupted is safe to reclaim now.
++	 */
++	INIT_LIST_HEAD(&leftover);
++	spin_lock(&fl->lock);
++	list_splice_tail_init(&fl->pending, &leftover);
++	list_splice_tail_init(&fl->interrupted, &leftover);
++	spin_unlock(&fl->lock);
++
++	list_for_each_entry_safe(ctx, n, &leftover, node) {
++		list_del(&ctx->node);
++		fastrpc_context_put(ctx);
++	}
++
+ 	spin_lock_irqsave(&cctx->lock, flags);
+ 	list_del(&fl->user);
+ 	spin_unlock_irqrestore(&cctx->lock, flags);
+-- 
+2.34.1
+
