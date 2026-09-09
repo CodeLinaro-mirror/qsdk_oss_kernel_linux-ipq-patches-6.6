@@ -1,0 +1,31 @@
+From ec816e9a7705be202e5bedb554a90e8c34fb5d01 Mon Sep 17 00:00:00 2001
+From: Ananya Ghosh <ananghos@qti.qualcomm.com>
+Date: Fri, 26 Jun 2026 13:31:08 +0530
+Subject: [PATCH] arm: mach-qcom: Add support for IPQ5610
+
+Enable the GICV3 driver for IPQ5610 target.
+
+Change-Id: I3077fa58cc385a85b61a0abbd9f16c739ea0b8df
+Signed-off-by: Ananya Ghosh <ananghos@qti.qualcomm.com>
+---
+ arch/arm/mach-qcom/Kconfig | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm/mach-qcom/Kconfig b/arch/arm/mach-qcom/Kconfig
+index 12dd82f922df..2bcfafcb0208 100644
+--- a/arch/arm/mach-qcom/Kconfig
++++ b/arch/arm/mach-qcom/Kconfig
+@@ -25,6 +25,10 @@ config ARCH_IPQ9650
+ 	bool "Enable support for IPQ9650"
+ 	select ARM_GIC_V3
+ 
++config ARCH_IPQ5610
++	bool "Enable support for IPQ5610"
++	select ARM_GIC_V3
++
+ config ARCH_MSM8X60
+ 	bool "Enable support for MSM8X60"
+ 	select CLKSRC_QCOM
+-- 
+2.34.1
+
