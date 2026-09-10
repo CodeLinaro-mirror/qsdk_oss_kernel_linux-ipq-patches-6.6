@@ -1,0 +1,46 @@
+From 8a18b35510eeb9c214846151b7dbff54c17e9150 Mon Sep 17 00:00:00 2001
+From: Ananya Ghosh <ananghos@qti.qualcomm.com>
+Date: Tue, 7 Jul 2026 14:46:00 +0530
+Subject: [PATCH] pinctrl: qcom: Add build support for ipq5610 pinctrl driver
+
+Change-Id: If9975d86f7a7baf576c6903b0fd7cc9aeef988df
+Signed-off-by: Ananya Ghosh <ananghos@qti.qualcomm.com>
+---
+ drivers/pinctrl/qcom/Kconfig.msm | 8 ++++++++
+ drivers/pinctrl/qcom/Makefile    | 1 +
+ 2 files changed, 9 insertions(+)
+
+diff --git a/drivers/pinctrl/qcom/Kconfig.msm b/drivers/pinctrl/qcom/Kconfig.msm
+index 84ff325cfdab..979f7d3c3b65 100644
+--- a/drivers/pinctrl/qcom/Kconfig.msm
++++ b/drivers/pinctrl/qcom/Kconfig.msm
+@@ -95,6 +95,14 @@ config PINCTRL_IPQ9650
+ 	  Qualcomm Technologies Inc. IPQ9650 platform. Select this for
+ 	  IPQ9650.
+ 
++config PINCTRL_IPQ5610
++	tristate "Qualcomm Technologies, Inc. IPQ5610 pin controller driver"
++	help
++	  This is the pinctrl, pinmux, pinconf and gpiolib driver for
++	  the Qualcomm Technologies Inc. TLMM block found on the
++	  Qualcomm Technologies Inc. IPQ5610 platform. Select this for
++	  IPQ5610.
++
+ config PINCTRL_MSM8226
+ 	tristate "Qualcomm 8226 pin controller driver"
+ 	depends on ARM || COMPILE_TEST
+diff --git a/drivers/pinctrl/qcom/Makefile b/drivers/pinctrl/qcom/Makefile
+index fa8291c1f786..d3a52b1d7637 100644
+--- a/drivers/pinctrl/qcom/Makefile
++++ b/drivers/pinctrl/qcom/Makefile
+@@ -9,6 +9,7 @@ obj-$(CONFIG_PINCTRL_IPQ8064)	+= pinctrl-ipq8064.o
+ obj-$(CONFIG_PINCTRL_IPQ5210)	+= pinctrl-ipq5210.o
+ obj-$(CONFIG_PINCTRL_IPQ5332)	+= pinctrl-ipq5332.o
+ obj-$(CONFIG_PINCTRL_IPQ5424)	+= pinctrl-ipq5424.o
++obj-$(CONFIG_PINCTRL_IPQ5610)	+= pinctrl-ipq5610.o
+ obj-$(CONFIG_PINCTRL_IPQ8074)	+= pinctrl-ipq8074.o
+ obj-$(CONFIG_PINCTRL_IPQ6018)	+= pinctrl-ipq6018.o
+ obj-$(CONFIG_PINCTRL_IPQ9574)	+= pinctrl-ipq9574.o
+-- 
+2.34.1
+

@@ -1,0 +1,37 @@
+From 000cd5bd7035620d5822bd2afd7a7ca86cbe9e6a Mon Sep 17 00:00:00 2001
+From: Sridharan S N <sridsn@qti.qualcomm.com>
+Date: Tue, 8 Sep 2026 11:08:58 +0530
+Subject: [PATCH] mtd: spi-nor: gigadevice: Add support for gd25lb256
+
+Add support for the GigaDevice GD25LB256E SPI NOR flash
+(JEDEC ID 0xc86719).
+
+The device has a 32 MB capacity and supports 4 KB sector
+erase, Quad read operations and dedicated 4-byte addressing
+opcodes.
+
+Change-Id: I6b41806f162b6b06f0930859f2ad4c20b8a794f4
+Signed-off-by: Sridharan S N <sridsn@qti.qualcomm.com>
+---
+ drivers/mtd/spi-nor/gigadevice.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/mtd/spi-nor/gigadevice.c b/drivers/mtd/spi-nor/gigadevice.c
+index 2be2bda6257e..74abed582a62 100644
+--- a/drivers/mtd/spi-nor/gigadevice.c
++++ b/drivers/mtd/spi-nor/gigadevice.c
+@@ -76,6 +76,11 @@ static const struct flash_info gigadevice_nor_parts[] = {
+ 		FIXUP_FLAGS(SPI_NOR_4B_OPCODES)
+ 		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
+ 			      SPI_NOR_QUAD_READ) },
++	{ "gd25lb256", INFO(0xc86719, 0, 64 * 1024, 512)
++		FLAGS(SPI_NOR_HAS_LOCK)
++		FIXUP_FLAGS(SPI_NOR_4B_OPCODES)
++		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
++			      SPI_NOR_QUAD_READ) },
+ };
+ 
+ const struct spi_nor_manufacturer spi_nor_gigadevice = {
+-- 
+2.34.1
+
