@@ -1,0 +1,177 @@
+From 93ec4edbcc89c5193b8be5630d6aabeaf7ff5939 Mon Sep 17 00:00:00 2001
+From: Vijay Balaji <vijbal@qti.qualcomm.com>
+Date: Tue, 25 Aug 2026 19:14:25 +0530
+Subject: [PATCH] mhi: host: expose FBC firmware memory usage via sysfs
+
+Add mhi_get_fbc_mem_info() to collect memory accounting
+information for a loaded FBC image and expose it through
+the new fbc_mem_size sysfs attribute.
+
+The reported statistics include RO/RW segment usage,
+vector table size, total image size, segment counts,
+and RO segment sharing/refcount information.
+
+Change-Id: Ifd96bfa18b03a3502bf0eee34942ff93b919c6b5
+Signed-off-by: Vijay Balaji <vijbal@qti.qualcomm.com>
+(cherry picked from commit 38738b0382d077958099287ecfe9e840d0cf2108)
+---
+ drivers/bus/mhi/host/boot.c     | 51 +++++++++++++++++++++++++++++++++
+ drivers/bus/mhi/host/init.c     | 36 +++++++++++++++++++++++
+ drivers/bus/mhi/host/internal.h | 28 ++++++++++++++++++
+ 3 files changed, 115 insertions(+)
+
+diff --git a/drivers/bus/mhi/host/boot.c b/drivers/bus/mhi/host/boot.c
+index 08e63782ef61..2d597a392c2b 100644
+--- a/drivers/bus/mhi/host/boot.c
++++ b/drivers/bus/mhi/host/boot.c
+@@ -495,6 +495,57 @@ void mhi_free_bhie_table(struct mhi_controller *mhi_cntrl,
+ 	kfree(image_info);
+ }
+ 
++/*
++ * mhi_get_fbc_mem_info - Report memory usage breakdown for the currently
++ * loaded FBC image on this endpoint
++ * @mhi_cntrl: MHI controller
++ * @info: Output structure populated with the breakdown
++ *
++ * Reports this endpoint's own accounting: bytes it allocated for RW
++ * segments and the vector table, plus how many RO segments it is
++ * referencing (allocated by the first EP and shared/refcounted, or
++ * allocated locally if this EP never shared any).
++ */
++void mhi_get_fbc_mem_info(struct mhi_controller *mhi_cntrl,
++			  struct mhi_fw_mem_info *info)
++{
++	struct image_info *img_info = mhi_cntrl->fbc_image;
++	struct mhi_shared_segments *shared_segs;
++	u32 i;
++
++	memset(info, 0, sizeof(*info));
++
++	if (!img_info || !img_info->entries)
++		return;
++
++	info->total_segments = img_info->entries;
++
++	mutex_lock(&mhi_shared_segments_lock);
++	shared_segs = mhi_cntrl->shared_segments;
++	if (shared_segs) {
++		info->ro_segments = shared_segs->num_segments;
++		info->ro_shared = true;
++		info->ro_refcount = refcount_read(&shared_segs->refcount);
++	}
++	mutex_unlock(&mhi_shared_segments_lock);
++
++	/* Total entries = RO segments + RW segments + 1 vector table entry */
++	info->rw_segments = img_info->entries - info->ro_segments - 1;
++
++	for (i = 0; i < img_info->entries; i++) {
++		size_t len = img_info->mhi_buf[i].len;
++
++		info->total_bytes += len;
++
++		if (i == img_info->entries - 1)
++			info->vec_bytes += len;
++		else if (i < info->ro_segments)
++			info->ro_bytes += len;
++		else
++			info->rw_bytes += len;
++	}
++}
++
+ /**
+  * mhi_alloc_bhie_table_partial - Allocate BHIE table with shared segment reuse
+  * @mhi_cntrl: MHI controller
+diff --git a/drivers/bus/mhi/host/init.c b/drivers/bus/mhi/host/init.c
+index e75a91d396fd..b9d89850682e 100644
+--- a/drivers/bus/mhi/host/init.c
++++ b/drivers/bus/mhi/host/init.c
+@@ -129,10 +129,46 @@ static ssize_t soc_reset_store(struct device *dev,
+ }
+ static DEVICE_ATTR_WO(soc_reset);
+ 
++static ssize_t fbc_mem_size_show(struct device *dev,
++				 struct device_attribute *attr,
++				 char *buf)
++{
++	struct mhi_device *mhi_dev = to_mhi_device(dev);
++	struct mhi_controller *mhi_cntrl = mhi_dev->mhi_cntrl;
++	struct mhi_fw_mem_info info;
++	int cnt = 0;
++
++	mhi_get_fbc_mem_info(mhi_cntrl, &info);
++
++	if (!info.total_segments)
++		return sysfs_emit(buf, "No FBC image loaded\n");
++
++	cnt += sysfs_emit_at(buf, cnt, "Total size: %zu bytes (%zu KB)\n",
++			     info.total_bytes, info.total_bytes / 1024);
++	cnt += sysfs_emit_at(buf, cnt, "RO segments: %u, %zu bytes (%zu KB)%s\n",
++			     info.ro_segments, info.ro_bytes,
++			     info.ro_bytes / 1024,
++			     info.ro_shared ? " [shared]" : "");
++	if (info.ro_shared)
++		cnt += sysfs_emit_at(buf, cnt, "RO refcount: %u\n",
++				     info.ro_refcount);
++	cnt += sysfs_emit_at(buf, cnt, "RW segments: %u, %zu bytes (%zu KB)\n",
++			     info.rw_segments, info.rw_bytes,
++			     info.rw_bytes / 1024);
++	cnt += sysfs_emit_at(buf, cnt, "Vector table: %zu bytes\n",
++			     info.vec_bytes);
++	cnt += sysfs_emit_at(buf, cnt, "Total entries (incl. vector table): %u\n",
++			     info.total_segments);
++
++	return cnt;
++}
++static DEVICE_ATTR_RO(fbc_mem_size);
++
+ static struct attribute *mhi_dev_attrs[] = {
+ 	&dev_attr_serial_number.attr,
+ 	&dev_attr_oem_pk_hash.attr,
+ 	&dev_attr_soc_reset.attr,
++	&dev_attr_fbc_mem_size.attr,
+ 	NULL,
+ };
+ ATTRIBUTE_GROUPS(mhi_dev);
+diff --git a/drivers/bus/mhi/host/internal.h b/drivers/bus/mhi/host/internal.h
+index cd211c674f78..8b316e496899 100644
+--- a/drivers/bus/mhi/host/internal.h
++++ b/drivers/bus/mhi/host/internal.h
+@@ -295,6 +295,34 @@ int mhi_alloc_bhie_table(struct mhi_controller *mhi_cntrl,
+ void mhi_free_bhie_table(struct mhi_controller *mhi_cntrl,
+ 			 struct image_info *image_info,
+ 			 enum image_type img_type);
++
++/**
++ * struct mhi_fw_mem_info - Memory usage breakdown for a loaded FBC image
++ * @total_bytes: Total memory consumed by this endpoint's firmware image
++ * @ro_bytes: Bytes held by shared RO segments (zero if RO segments are not
++ *            shared with other endpoints)
++ * @rw_bytes: Bytes held by RW segments (excludes the vector table)
++ * @vec_bytes: Bytes held by the BHIe vector table
++ * @total_segments: Total number of entries in the image (RO + RW + vector)
++ * @ro_segments: Number of RO segments
++ * @rw_segments: Number of RW segments
++ * @ro_shared: True if the RO segments are shared with other endpoints
++ * @ro_refcount: Refcount of the shared RO group (0 if not shared)
++ */
++struct mhi_fw_mem_info {
++	size_t total_bytes;
++	size_t ro_bytes;
++	size_t rw_bytes;
++	size_t vec_bytes;
++	u32 total_segments;
++	u32 ro_segments;
++	u32 rw_segments;
++	bool ro_shared;
++	u32 ro_refcount;
++};
++
++void mhi_get_fbc_mem_info(struct mhi_controller *mhi_cntrl,
++			  struct mhi_fw_mem_info *info);
+ int mhi_handle_boot_args(struct mhi_controller *mhi_cntrl);
+ void mhi_download_fw_license(struct mhi_controller *mhi_cntrl);
+ void mhi_free_boot_args(struct mhi_controller *mhi_cntrl);
+-- 
+2.34.1
+
