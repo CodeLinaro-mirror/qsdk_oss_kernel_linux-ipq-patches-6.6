@@ -1,0 +1,35 @@
+From 1f3a6af33f5a6f16e4224cfed06495cc0fa59f3b Mon Sep 17 00:00:00 2001
+From: Dhairya Khale <dkhale@qti.qualcomm.com>
+Date: Tue, 1 Sep 2026 23:33:23 +0530
+Subject: [PATCH] net: Use CONFIG_SKB_RECYCLE_SIZE indirectly and add case for
+ 256M builds.
+
+Change-Id: I787ad8aebe4683966570903616514159a928c14d
+Signed-off-by: Dhairya Khale <dkhale@qti.qualcomm.com>
+(cherry picked from commit 3220bcc9707a979c61cdb853e9a418993e05d423)
+---
+ net/core/skbuff.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/net/core/skbuff.c b/net/core/skbuff.c
+index 37163fbce873..08d271de229f 100644
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -105,8 +105,12 @@ struct kmem_cache *skb_data_cache_2100;
+ #include "skbuff_debug.h"
+ 
+ #if defined(CONFIG_SKB_RECYCLER)
+-static unsigned int skb_recycle_size = CONFIG_SKB_RECYCLE_SIZE;
+-#define SKB_RECYCLE_SIZE skb_recycle_size
++#if (CONFIG_IPQ_MEM_PROFILE == 256) && (CONFIG_SKB_RECYCLE_SIZE != 1664)
++#define SKB_RECYCLE_SIZE	1856
++#else
++#define SKB_RECYCLE_SIZE	CONFIG_SKB_RECYCLE_SIZE
++#endif
++static unsigned int skb_recycle_size = SKB_RECYCLE_SIZE;
+ #endif
+ 
+ /*
+-- 
+2.34.1
+
