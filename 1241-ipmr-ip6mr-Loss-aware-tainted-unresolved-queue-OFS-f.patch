@@ -1,0 +1,518 @@
+From 1dcba4442cdd6df77e02af3bef060734191a08e1 Mon Sep 17 00:00:00 2001
+From: Suhas N Bhargav <sbhargav@qti.qualcomm.com>
+Date: Fri, 11 Sep 2026 18:00:44 +0530
+Subject: [PATCH] ipmr/ip6mr: Loss-aware tainted unresolved queue (OFS fix)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Fix out-of-sequence (OFS) multicast forwarding caused by the unresolved MFC queue replaying stale SKBs after S,G cache resolution while new in-order packets simultaneously enter the fast path.
+
+The root cause is the PUBLISH-BEFORE-REPLAY race in ipmr_mfc_add() /
+ip6mr_mfc_add(): the resolved entry 'c' is inserted into the rhashtable
+(making it visible to ip_mr_input() on other CPUs) BEFORE ipmr_cache_resolve() drains the queued SKBs. Any packet that arrives between publish and drain overtakes the queued SKBs → OFS sequence.
+
+This patch series introduces a "overflow" flag on the unresolved cache object. Once the queue overflows (qlen > 3), the object is marked overflow and all further arriving packets are dropped (not queued).
+At resolution time:
+  - PURGE policy (default): discard all queued SKBs before publishing.
+  - REPLAY policy  (sysctl): drain queue before publishing.
+  — acceptable for low-rate streams where the initial gap is tolerable.
+
+In both cases the resolved entry is published to the hash ONLY AFTER the queue has been fully drained / purged, eliminating the overtaking window.
+
+Change-Id: Idfc5882122f912dca859acbc183c90c7df4f2b49
+Signed-off-by: Suhas N Bhargav <sbhargav@qti.qualcomm.com>
+(cherry picked from commit 8dd8cb7252449a26ca0c4707c22f1e8592e0c26f)
+---
+ include/linux/mroute_base.h |  12 ++++
+ include/net/netns/ipv4.h    |   1 +
+ include/net/netns/ipv6.h    |   1 +
+ net/ipv4/ipmr.c             | 113 ++++++++++++++++++++++++++++++------
+ net/ipv4/sysctl_net_ipv4.c  |  13 +++++
+ net/ipv6/ip6mr.c            | 103 +++++++++++++++++++++++++-------
+ net/ipv6/sysctl_net_ipv6.c  |  14 +++++
+ 7 files changed, 217 insertions(+), 40 deletions(-)
+
+diff --git a/include/linux/mroute_base.h b/include/linux/mroute_base.h
+index 58a2401e4b55..2dad17b25139 100644
+--- a/include/linux/mroute_base.h
++++ b/include/linux/mroute_base.h
+@@ -9,6 +9,16 @@
+ #include <net/fib_notifier.h>
+ #include <net/ip_fib.h>
+ 
++/**
++ * enum ipmr_overflow_policy - behaviour when unresolved MFC queue is overflow
++ * @IPMR_OVERFLOW_PURGE:  discard all queued SKBs on resolution (default, OFS-safe)
++ * @IPMR_OVERFLOW_REPLAY: replay surviving SKBs before publish (low-rate opt-in)
++ */
++enum ipmr_overflow_policy {
++	IPMR_OVERFLOW_PURGE  = 0,
++	IPMR_OVERFLOW_REPLAY = 1,
++};
++
+ /**
+  * struct vif_device - interface representor for multicast routing
+  * @dev: network device being used
+@@ -141,6 +151,8 @@ struct mr_mfc {
+ 		struct {
+ 			unsigned long expires;
+ 			struct sk_buff_head unresolved;
++			bool overflow; /* If queue overflowed (qlen > 3), mark overflow. */
++			bool resolving; /* drain-before-publish phase active */
+ 		} unres;
+ 		struct {
+ 			unsigned long last_assert;
+diff --git a/include/net/netns/ipv4.h b/include/net/netns/ipv4.h
+index 7a41c4791536..14a958344399 100644
+--- a/include/net/netns/ipv4.h
++++ b/include/net/netns/ipv4.h
+@@ -236,6 +236,7 @@ struct netns_ipv4 {
+ 
+ 	struct fib_notifier_ops	*ipmr_notifier_ops;
+ 	unsigned int	ipmr_seq;	/* protected by rtnl_mutex */
++	int sysctl_ipmr_overflow_policy; /* 0=PURGE 1=REPLAY */
+ 
+ 	atomic_t	rt_genid;
+ 	siphash_key_t	ip_id_key;
+diff --git a/include/net/netns/ipv6.h b/include/net/netns/ipv6.h
+index 85130dd42d00..7bc65a9ded36 100644
+--- a/include/net/netns/ipv6.h
++++ b/include/net/netns/ipv6.h
+@@ -114,6 +114,7 @@ struct netns_ipv6 {
+ 	struct fib_notifier_ops	*notifier_ops;
+ 	struct fib_notifier_ops	*ip6mr_notifier_ops;
+ 	unsigned int ipmr_seq; /* protected by rtnl_mutex */
++	int sysctl_ip6mr_overflow_policy; /* 0=PURGE 1=REPLAY */
+ 	struct {
+ 		struct hlist_head head;
+ 		spinlock_t	lock;
+diff --git a/net/ipv4/ipmr.c b/net/ipv4/ipmr.c
+index fdde4d5e5c69..3f541a59acb4 100644
+--- a/net/ipv4/ipmr.c
++++ b/net/ipv4/ipmr.c
+@@ -1004,6 +1004,17 @@ static void ipmr_expire_process(struct timer_list *t)
+ 	expires = 10*HZ;
+ 
+ 	list_for_each_entry_safe(c, next, &mrt->mfc_unres_queue, list) {
++		/*
++		 * Skip entries currently being drained by
++		 * ipmr_mfc_add(). The resolving thread owns the entry
++		 * and will remove it from the list itself.
++		 * Bump expires so the timer doesn't re-fire immediately.
++		 */
++		if (c->mfc_un.unres.resolving) {
++			c->mfc_un.unres.expires = jiffies + 10 * HZ;
++			continue;
++		}
++
+ 		if (time_after(c->mfc_un.unres.expires, now)) {
+ 			unsigned long interval = c->mfc_un.unres.expires - now;
+ 			if (interval < expires)
+@@ -1211,6 +1222,8 @@ static struct mfc_cache *ipmr_cache_alloc_unres(void)
+ 	if (c) {
+ 		skb_queue_head_init(&c->_c.mfc_un.unres.unresolved);
+ 		c->_c.mfc_un.unres.expires = jiffies + 10 * HZ;
++		c->_c.mfc_un.unres.overflow = false;
++		c->_c.mfc_un.unres.resolving = false;
+ 	}
+ 	return c;
+ }
+@@ -1222,7 +1235,25 @@ static void ipmr_cache_resolve(struct net *net, struct mr_table *mrt,
+ 	struct sk_buff *skb;
+ 	struct nlmsgerr *e;
+ 
+-	/* Play the pending entries through our router */
++	bool overflow = uc->_c.mfc_un.unres.overflow;
++	bool purge = (overflow && net->ipv4.sysctl_ipmr_overflow_policy == IPMR_OVERFLOW_PURGE) ? true : false;
++
++	/*
++	 * overflow-policy aware drain.
++	 *
++	 * If overflow=true AND policy=PURGE:
++	 *   - version==0 (RTM_GETROUTE probe): 'c' IS resolved here, so fill
++	 *     and reply normally — the querying process deserves the answer.
++	 *     Sending NLMSG_ERROR would be wrong: we have the route.
++	 *   - version==4 (real data): kfree_skb() — sacrificed to prevent OFS.
++	 *
++	 * If NOT overflow OR policy=REPLAY:
++	 *   - version==0: fill and reply (same as always).
++	 *   - version==4: ip_mr_forward() — normal replay.
++	 *
++	 * In both cases version==0 probes ALWAYS get a filled reply.
++	 * The overflow flag only changes what happens to real data SKBs.
++	 */
+ 	while ((skb = __skb_dequeue(&uc->_c.mfc_un.unres.unresolved))) {
+ 		if (ip_hdr(skb)->version == 0) {
+ 			struct nlmsghdr *nlh = skb_pull(skb,
+@@ -1242,10 +1273,18 @@ static void ipmr_cache_resolve(struct net *net, struct mr_table *mrt,
+ 			}
+ 
+ 			rtnl_unicast(skb, net, NETLINK_CB(skb).portid);
+-		} else {
++		} else if (!purge) {
++			/*
++			 * REPLAY path: forward queued data
++			 */
+ 			rcu_read_lock();
+ 			ip_mr_forward(net, mrt, skb->dev, skb, c, 0);
+ 			rcu_read_unlock();
++		} else {
++			/*
++			 * PURGE path: drop this data SKB intentionally.
++			 */
++			kfree_skb(skb);
+ 		}
+ 	}
+ }
+@@ -1393,8 +1432,25 @@ static int ipmr_cache_unresolved(struct mr_table *mrt, vifi_t vifi,
+ 				  c->_c.mfc_un.unres.expires);
+ 	}
+ 
+-	/* See if we can append the packet */
+-	if (c->_c.mfc_un.unres.unresolved.qlen > 3) {
++	/*
++	 * 3-way branch for overflow/resolving states.
++	 *
++	 * RESOLVING=true: ipmr_mfc_add() is actively draining this
++	 * entry right now. Drop the packet silently.
++	 *
++	 * OVERFLOW=true (not yet resolving): queue already overflowed
++	 * once; all subsequent data packets are dropped to avoid OFS.
++	 *
++	 * NORMAL: queue has room, enqueue as before.
++	 */
++	if (c->_c.mfc_un.unres.overflow || c->_c.mfc_un.unres.resolving) {
++		kfree_skb(skb);
++		err = -ENOBUFS;
++	} else if (c->_c.mfc_un.unres.unresolved.qlen > 3) {
++		/*
++		 * First overflow: mark overflow field and drop this packet
++		 */
++		c->_c.mfc_un.unres.overflow = true;
+ 		kfree_skb(skb);
+ 		err = -ENOBUFS;
+ 	} else {
+@@ -1481,16 +1537,12 @@ static int ipmr_mfc_add(struct net *net, struct mr_table *mrt,
+ 	if (!mrtsock)
+ 		c->_c.mfc_flags |= MFC_STATIC;
+ 
+-	ret = rhltable_insert_key(&mrt->mfc_hash, &c->cmparg, &c->_c.mnode,
+-				  ipmr_rht_params);
+-	if (ret) {
+-		pr_err("ipmr: rhtable insert error %d\n", ret);
+-		ipmr_cache_free(c);
+-		return ret;
+-	}
+-	list_add_tail_rcu(&c->_c.list, &mrt->mfc_cache_list);
+-	/* Check to see if we resolved a queued list. If so we
+-	 * need to send on the frames and tidy up.
++	/*
++	 * Drain/purge the unresolved queue BEFORE publishing 'c'
++	 * to the hash table. Publishing first creates a window where a
++	 * new packet on another CPU finds 'c' and is forwarded in-order
++	 * AHEAD of the queued SKBs that ipmr_cache_resolve() replays next,
++	 * causing out-of-sequence delivery.
+ 	 */
+ 	found = false;
+ 	spin_lock_bh(&mfc_unres_lock);
+@@ -1498,20 +1550,43 @@ static int ipmr_mfc_add(struct net *net, struct mr_table *mrt,
+ 		uc = (struct mfc_cache *)_uc;
+ 		if (uc->mfc_origin == c->mfc_origin &&
+ 		    uc->mfc_mcastgrp == c->mfc_mcastgrp) {
+-			list_del(&_uc->list);
+-			atomic_dec(&mrt->cache_resolve_queue_len);
+ 			found = true;
++			uc->_c.mfc_un.unres.resolving = true;
+ 			break;
+ 		}
+ 	}
+-	if (list_empty(&mrt->mfc_unres_queue))
+-		del_timer(&mrt->ipmr_expire_timer);
+ 	spin_unlock_bh(&mfc_unres_lock);
+ 
+ 	if (found) {
+-		ipmr_cache_resolve(net, mrt, uc, c);
++		struct net *net_ref = read_pnet(&mrt->net);
++
++		ipmr_cache_resolve(net_ref, mrt, uc, c);
++	}
++
++	/* NOW publish 'c' — queue is already drained/purged */
++	ret = rhltable_insert_key(&mrt->mfc_hash, &c->cmparg,
++					&c->_c.mnode, ipmr_rht_params);
++	if (ret) {
++		pr_err("ipmr: rhtable insert error %d\n", ret);
++		ipmr_cache_free(c);
++		return ret;
++	}
++	list_add_tail_rcu(&c->_c.list, &mrt->mfc_cache_list);
++
++	/*
++	 * Delete the list.
++	 */
++	if (found) {
++		spin_lock_bh(&mfc_unres_lock);
++		list_del(&uc->_c.list);
++		atomic_dec(&mrt->cache_resolve_queue_len);
++		if (list_empty(&mrt->mfc_unres_queue))
++			del_timer(&mrt->ipmr_expire_timer);
++
++		spin_unlock_bh(&mfc_unres_lock);
+ 		ipmr_cache_free(uc);
+ 	}
++
+ 	call_ipmr_mfc_entry_notifiers(net, FIB_EVENT_ENTRY_ADD, c, mrt->id);
+ 	mroute_netlink_event(mrt, c, RTM_NEWROUTE);
+ 	return 0;
+diff --git a/net/ipv4/sysctl_net_ipv4.c b/net/ipv4/sysctl_net_ipv4.c
+index 6ac890b4073f..4a2e6af2dd18 100644
+--- a/net/ipv4/sysctl_net_ipv4.c
++++ b/net/ipv4/sysctl_net_ipv4.c
+@@ -10,6 +10,7 @@
+ #include <linux/seqlock.h>
+ #include <linux/init.h>
+ #include <linux/slab.h>
++#include <linux/mroute_base.h>
+ #include <net/icmp.h>
+ #include <net/ip.h>
+ #include <net/ip_fib.h>
+@@ -877,6 +878,17 @@ static struct ctl_table ipv4_net_table[] = {
+ 		.mode		= 0644,
+ 		.proc_handler	= proc_dointvec
+ 	},
++#ifdef CONFIG_IP_MROUTE
++	{
++		.procname	= "ipmr_overflow_policy",
++		.data		= &init_net.ipv4.sysctl_ipmr_overflow_policy,
++		.maxlen		= sizeof(int),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec_minmax,
++		.extra1		= SYSCTL_ZERO,	/* IPMR_OVERFLOW_PURGE  */
++		.extra2		= SYSCTL_ONE,	/* IPMR_OVERFLOW_REPLAY */
++	},
++#endif
+ #ifdef CONFIG_IP_MULTICAST
+ 	{
+ 		.procname	= "igmp_qrv",
+@@ -1528,6 +1540,7 @@ static __net_init int ipv4_sysctl_init_net(struct net *net)
+ 	if (!net->ipv4.sysctl_local_reserved_ports)
+ 		goto err_ports;
+ 
++	net->ipv4.sysctl_ipmr_overflow_policy = IPMR_OVERFLOW_PURGE;	/* default: safe */
+ 	return 0;
+ 
+ err_ports:
+diff --git a/net/ipv6/ip6mr.c b/net/ipv6/ip6mr.c
+index 8b1c61553d1c..436a73855701 100644
+--- a/net/ipv6/ip6mr.c
++++ b/net/ipv6/ip6mr.c
+@@ -1043,6 +1043,16 @@ static void ipmr_do_expire_process(struct mr_table *mrt)
+ 	struct mr_mfc *c, *next;
+ 
+ 	list_for_each_entry_safe(c, next, &mrt->mfc_unres_queue, list) {
++		/*
++		 * Skip entries being drained by ip6mr_mfc_add().
++		 * resolving thread owns uc exclusively; bump expires so
++		 * the timer does not re-fire immediately.
++		 */
++		if (c->mfc_un.unres.resolving) {
++			c->mfc_un.unres.expires = jiffies + 10 * HZ;
++			continue;
++		}
++
+ 		if (time_after(c->mfc_un.unres.expires, now)) {
+ 			/* not yet... */
+ 			unsigned long interval = c->mfc_un.unres.expires - now;
+@@ -1238,6 +1248,8 @@ static struct mfc6_cache *ip6mr_cache_alloc_unres(void)
+ 		return NULL;
+ 	skb_queue_head_init(&c->_c.mfc_un.unres.unresolved);
+ 	c->_c.mfc_un.unres.expires = jiffies + 10 * HZ;
++	c->_c.mfc_un.unres.overflow = false;
++	c->_c.mfc_un.unres.resolving = false;
+ 	return c;
+ }
+ 
+@@ -1249,11 +1261,18 @@ static void ip6mr_cache_resolve(struct net *net, struct mr_table *mrt,
+ 				struct mfc6_cache *uc, struct mfc6_cache *c)
+ {
+ 	struct sk_buff *skb;
++	bool overflow = uc->_c.mfc_un.unres.overflow;
++	bool purge = (overflow && net->ipv6.sysctl_ip6mr_overflow_policy == IPMR_OVERFLOW_PURGE) ? true : false;
+ 
+ 	/*
+-	 *	Play the pending entries through our router
++	 * overflow-policy aware drain().
++	 *
++	 * version==0 (RTM_GETROUTE probe): 'c' is resolved, fill and reply.
++	 * ALWAYS done regardless of taint/policy — querying process gets answer.
++	 *
++	 * version==6 data + purge=true: kfree_skb() — prevent OFS.
++	 * version==6 data + purge=false: ip6_mr_forward() — normal replay.
+ 	 */
+-
+ 	while ((skb = __skb_dequeue(&uc->_c.mfc_un.unres.unresolved))) {
+ 		if (ipv6_hdr(skb)->version == 0) {
+ 			struct nlmsghdr *nlh = skb_pull(skb,
+@@ -1269,10 +1288,18 @@ static void ip6mr_cache_resolve(struct net *net, struct mr_table *mrt,
+ 				((struct nlmsgerr *)nlmsg_data(nlh))->error = -EMSGSIZE;
+ 			}
+ 			rtnl_unicast(skb, net, NETLINK_CB(skb).portid);
+-		} else {
++		} else if (!purge) {
++			/*
++			 * REPLAY path - Forwards Queued packets.
++			 */
+ 			rcu_read_lock();
+ 			ip6_mr_forward(net, mrt, skb->dev, skb, c);
+ 			rcu_read_unlock();
++		} else {
++			/*
++			 * PURGE path — drop data, prevent OFS.
++			 */
++			kfree_skb(skb);
+ 		}
+ 	}
+ }
+@@ -1435,8 +1462,25 @@ static int ip6mr_cache_unresolved(struct mr_table *mrt, mifi_t mifi,
+ 		ipmr_do_expire_process(mrt);
+ 	}
+ 
+-	/* See if we can append the packet */
+-	if (c->_c.mfc_un.unres.unresolved.qlen > 3) {
++	/*
++	 * 3-way branch for overflow/resolving states.
++	 *
++	 * RESOLVING=true: ip6mr_mfc_add() is actively draining this
++	 * entry right now. Drop the packet silently.
++	 *
++	 * OVERFLOW=true (not yet resolving): queue already overflowed
++	 * once; all subsequent data packets are dropped to avoid OFS.
++	 *
++	 * NORMAL: queue has room, enqueue as before.
++	 */
++	if (c->_c.mfc_un.unres.overflow || c->_c.mfc_un.unres.resolving) {
++		kfree_skb(skb);
++		err = -ENOBUFS;
++	} else if (c->_c.mfc_un.unres.unresolved.qlen > 3) {
++		/*
++		 * First overflow: mark overflow field and drop this packet
++		 */
++		c->_c.mfc_un.unres.overflow = true;
+ 		kfree_skb(skb);
+ 		err = -ENOBUFS;
+ 	} else {
+@@ -1724,17 +1768,12 @@ static int ip6mr_mfc_add(struct net *net, struct mr_table *mrt,
+ 	if (!mrtsock)
+ 		c->_c.mfc_flags |= MFC_STATIC;
+ 
+-	err = rhltable_insert_key(&mrt->mfc_hash, &c->cmparg, &c->_c.mnode,
+-				  ip6mr_rht_params);
+-	if (err) {
+-		pr_err("ip6mr: rhtable insert error %d\n", err);
+-		ip6mr_cache_free(c);
+-		return err;
+-	}
+-	list_add_tail_rcu(&c->_c.list, &mrt->mfc_cache_list);
+-
+-	/* Check to see if we resolved a queued list. If so we
+-	 * need to send on the frames and tidy up.
++	/*
++	 * Drain/purge the unresolved queue BEFORE publishing 'c'
++	 * to the hash table. Publishing first creates a window where a
++	 * new packet on another CPU finds 'c' and is forwarded in-order
++	 * AHEAD of the queued SKBs that ip6mr_cache_resolve() replays next,
++	 * causing out-of-sequence delivery.
+ 	 */
+ 	found = false;
+ 	spin_lock_bh(&mfc_unres_lock);
+@@ -1742,20 +1781,42 @@ static int ip6mr_mfc_add(struct net *net, struct mr_table *mrt,
+ 		uc = (struct mfc6_cache *)_uc;
+ 		if (ipv6_addr_equal(&uc->mf6c_origin, &c->mf6c_origin) &&
+ 		    ipv6_addr_equal(&uc->mf6c_mcastgrp, &c->mf6c_mcastgrp)) {
+-			list_del(&_uc->list);
+-			atomic_dec(&mrt->cache_resolve_queue_len);
+ 			found = true;
++			uc->_c.mfc_un.unres.resolving = true;
+ 			break;
+ 		}
+ 	}
+-	if (list_empty(&mrt->mfc_unres_queue))
+-		del_timer(&mrt->ipmr_expire_timer);
+ 	spin_unlock_bh(&mfc_unres_lock);
+ 
+ 	if (found) {
+-		ip6mr_cache_resolve(net, mrt, uc, c);
++		struct net *net_ref = read_pnet(&mrt->net);
++
++		ip6mr_cache_resolve(net_ref, mrt, uc, c);
++	}
++
++	/* NOW publish 'c' — queue is already drained/purged */
++	err = rhltable_insert_key(&mrt->mfc_hash, &c->cmparg, &c->_c.mnode, ip6mr_rht_params);
++	if (err) {
++		pr_err("ip6mr: rhtable insert error %d\n", err);
++		ip6mr_cache_free(c);
++		return err;
++	}
++	list_add_tail_rcu(&c->_c.list, &mrt->mfc_cache_list);
++
++	/*
++	 * Delete the list.
++	 */
++	if (found) {
++		spin_lock_bh(&mfc_unres_lock);
++		list_del(&uc->_c.list);
++		atomic_dec(&mrt->cache_resolve_queue_len);
++		if (list_empty(&mrt->mfc_unres_queue))
++			del_timer(&mrt->ipmr_expire_timer);
++
++		spin_unlock_bh(&mfc_unres_lock);
+ 		ip6mr_cache_free(uc);
+ 	}
++
+ 	call_ip6mr_mfc_entry_notifiers(net, FIB_EVENT_ENTRY_ADD,
+ 				       c, mrt->id);
+ 	mr6_netlink_event(mrt, c, RTM_NEWROUTE);
+diff --git a/net/ipv6/sysctl_net_ipv6.c b/net/ipv6/sysctl_net_ipv6.c
+index 888676163e90..b318203a0bb7 100644
+--- a/net/ipv6/sysctl_net_ipv6.c
++++ b/net/ipv6/sysctl_net_ipv6.c
+@@ -12,6 +12,7 @@
+ #include <linux/ipv6.h>
+ #include <linux/slab.h>
+ #include <linux/export.h>
++#include <linux/mroute_base.h>
+ #include <net/ndisc.h>
+ #include <net/ipv6.h>
+ #include <net/addrconf.h>
+@@ -224,6 +225,17 @@ static struct ctl_table ipv6_rotable[] = {
+ 		.mode		= 0644,
+ 		.proc_handler	= proc_dointvec
+ 	},
++#ifdef CONFIG_IPV6_MROUTE
++	{
++		.procname	= "ip6mr_overflow_policy",
++		.data		= &init_net.ipv6.sysctl_ip6mr_overflow_policy,
++		.maxlen		= sizeof(int),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec_minmax,
++		.extra1		= SYSCTL_ZERO,	/* IPMR_OVERFLOW_PURGE  */
++		.extra2		= SYSCTL_ONE,	/* IPMR_OVERFLOW_REPLAY */
++	},
++#endif
+ 	{
+ 		.procname	= "mld_qrv",
+ 		.data		= &sysctl_mld_qrv,
+@@ -295,6 +307,8 @@ static int __net_init ipv6_sysctl_net_init(struct net *net)
+ 	if (!net->ipv6.sysctl.icmp_hdr)
+ 		goto out_unregister_route_table;
+ 
++	net->ipv6.sysctl_ip6mr_overflow_policy = IPMR_OVERFLOW_PURGE;	/* default: safe */
++
+ 	err = 0;
+ out:
+ 	return err;
+-- 
+2.34.1
+
