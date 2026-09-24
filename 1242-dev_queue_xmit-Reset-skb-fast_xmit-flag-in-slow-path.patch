@@ -1,0 +1,38 @@
+From f6c3327897897ed861563d40d98b2d5cf476cfa5 Mon Sep 17 00:00:00 2001
+From: Himanshu Joshi <himajosh@qti.qualcomm.com>
+Date: Mon, 21 Sep 2026 12:24:28 +0530
+Subject: [PATCH] dev_queue_xmit: Reset skb->fast_xmit flag in slow path
+ transmit
+
+Reset skb->fast_xmit flag in "dev_queue_xmit". This avoids a combination
+scenarios like PPPoE with DS-Lite or other tunnels where one rule is matched
+with sfe and was transmitted in fast path and the inner is transmitted through
+slow path.
+
+Change-Id: I8210f4a4eef614d22a3554fad76a388e0fc09569
+Signed-off-by: Himanshu Joshi <himajosh@qti.qualcomm.com>
+(cherry picked from commit 4229ce86284cb1145ff5a98357c1d5bd5e372298)
+---
+ net/core/dev.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/net/core/dev.c b/net/core/dev.c
+index 9741433edb99..71b159be96b0 100644
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -4957,6 +4957,12 @@ int __dev_queue_xmit(struct sk_buff *skb, struct net_device *sb_dev)
+ 	skb_reset_mac_header(skb);
+ 	skb_assert_len(skb);
+ 
++	/*
++	 * if the skb landed in dev_queue_xmit then its not fast transmitted
++	 * reset this flag for further processing.
++	 */
++	skb->fast_xmit = 0;
++
+ 	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_SCHED_TSTAMP))
+ 		__skb_tstamp_tx(skb, NULL, NULL, skb->sk, SCM_TSTAMP_SCHED);
+ 
+-- 
+2.34.1
+
