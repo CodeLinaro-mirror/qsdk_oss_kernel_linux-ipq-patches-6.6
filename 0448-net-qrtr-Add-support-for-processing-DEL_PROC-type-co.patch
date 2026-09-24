@@ -70,7 +70,7 @@ index 26197a0ab7ef..426cea019458 100644
  };
  
  /**
-@@ -186,6 +193,9 @@ static void __qrtr_node_release(struct kref *kref)
+@@ -187,6 +194,9 @@ static void __qrtr_node_release(struct k
  	list_del(&node->item);
  	mutex_unlock(&qrtr_node_lock);
  
@@ -80,7 +80,7 @@ index 26197a0ab7ef..426cea019458 100644
  	skb_queue_purge(&node->rx_queue);
  
  	/* Free tx flow counters */
-@@ -526,6 +536,9 @@ int qrtr_endpoint_post(struct qrtr_endpoint *ep, const void *data, size_t len)
+@@ -522,6 +532,9 @@ int qrtr_endpoint_post(struct qrtr_endpo
  
  	if (cb->type == QRTR_TYPE_RESUME_TX) {
  		qrtr_tx_resume(node, skb);
@@ -90,7 +90,7 @@ index 26197a0ab7ef..426cea019458 100644
  	} else {
  		ipc = qrtr_port_lookup(cb->dst_port);
  		if (!ipc)
-@@ -574,6 +587,50 @@ static struct sk_buff *qrtr_alloc_ctrl_packet(struct qrtr_ctrl_pkt **pkt,
+@@ -570,6 +583,47 @@ static struct sk_buff *qrtr_alloc_ctrl_p
  	return skb;
  }
  
@@ -100,8 +100,7 @@ index 26197a0ab7ef..426cea019458 100644
 +	struct qrtr_node *node = container_of(work, struct qrtr_node,
 +					      read_data);
 +	struct qrtr_ctrl_pkt *pkt;
-+	void __rcu **slot;
-+	struct radix_tree_iter iter;
++	unsigned long index;
 +	struct qrtr_tx_flow *flow;
 +	struct sk_buff *skb;
 +	struct qrtr_sock *ipc;
@@ -118,10 +117,8 @@ index 26197a0ab7ef..426cea019458 100644
 +		if (cb->type == QRTR_TYPE_DEL_PROC) {
 +			/* Free tx flow counters */
 +			mutex_lock(&node->qrtr_tx_lock);
-+			radix_tree_for_each_slot(slot, &node->qrtr_tx_flow, &iter, 0) {
-+				flow = *slot;
++			xa_for_each(&node->qrtr_tx_flow, index, flow)
 +				wake_up_interruptible_all(&flow->resume_tx);
-+			}
 +			mutex_unlock(&node->qrtr_tx_lock);
 +
 +			/* Translate DEL_PROC to BYE for local enqueue */
@@ -141,7 +138,7 @@ index 26197a0ab7ef..426cea019458 100644
  /**
   * qrtr_endpoint_register() - register a new endpoint
   * @ep: endpoint to register
-@@ -599,6 +656,14 @@ int qrtr_endpoint_register(struct qrtr_endpoint *ep, unsigned int nid)
+@@ -595,6 +649,14 @@ int qrtr_endpoint_register(struct qrtr_e
  	node->nid = QRTR_EP_NID_AUTO;
  	node->ep = ep;
  
@@ -153,9 +150,6 @@ index 26197a0ab7ef..426cea019458 100644
 +		return -ENOMEM;
 +	}
 +
- 	INIT_RADIX_TREE(&node->qrtr_tx_flow, GFP_KERNEL);
+ 	xa_init(&node->qrtr_tx_flow);
  	mutex_init(&node->qrtr_tx_lock);
  
--- 
-2.34.1
-

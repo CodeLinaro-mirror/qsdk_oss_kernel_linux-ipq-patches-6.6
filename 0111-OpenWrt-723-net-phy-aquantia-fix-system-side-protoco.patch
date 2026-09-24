@@ -18,11 +18,11 @@ Signed-off-by: Ram Chandra Jangir <quic_rjangir@quicinc.com>
  drivers/net/phy/aquantia_main.c | 8 +++++++-
  1 file changed, 7 insertions(+), 1 deletion(-)
 
-diff --git a/drivers/net/phy/aquantia_main.c b/drivers/net/phy/aquantia_main.c
+diff --git a/drivers/net/phy/aquantia/aquantia_main.c b/drivers/net/phy/aquantia/aquantia_main.c
 index 80583d355bd7..50a813b72b7a 100644
---- a/drivers/net/phy/aquantia_main.c
-+++ b/drivers/net/phy/aquantia_main.c
-@@ -342,10 +342,16 @@ static int aqr_config_aneg_set_prot(struct phy_device *phydev)
+--- a/drivers/net/phy/aquantia/aquantia_main.c
++++ b/drivers/net/phy/aquantia/aquantia_main.c
+@@ -340,10 +340,16 @@ static int aqr_config_aneg_set_prot(stru
  	phy_write_mmd(phydev, MDIO_MMD_VEND1, AQUANTIA_VND1_GSTART_RATE,
  		      aquantia_syscfg[if_type].start_rate);
  
@@ -40,6 +40,3 @@ index 80583d355bd7..50a813b72b7a 100644
  
  	/* wake PHY back up */
  	phy_write_mmd(phydev, MDIO_MMD_VEND1, AQUANTIA_VND1_GLOBAL_SC, 0);
--- 
-2.34.1
-

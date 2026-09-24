@@ -24,7 +24,7 @@ diff --git a/drivers/net/phy/sfp.c b/drivers/net/phy/sfp.c
 index 3679a43f4eb0..29fd4f375458 100644
 --- a/drivers/net/phy/sfp.c
 +++ b/drivers/net/phy/sfp.c
-@@ -471,6 +471,9 @@ static const struct sfp_quirk sfp_quirks[] = {
+@@ -517,6 +517,9 @@ static const struct sfp_quirk sfp_quirks
  	// FS 2.5G Base-T
  	SFP_QUIRK_M("FS", "SFP-2.5G-T", sfp_quirk_oem_2_5g),
  
@@ -34,31 +34,25 @@ index 3679a43f4eb0..29fd4f375458 100644
  	// Lantech 8330-262D-E can operate at 2500base-X, but incorrectly report
  	// 2500MBd NRZ in their EEPROM
  	SFP_QUIRK_M("Lantech", "8330-262D-E", sfp_quirk_2500basex),
-@@ -2587,7 +2590,8 @@ static void sfp_sm_main(struct sfp *sfp, unsigned int event)
+@@ -2643,7 +2646,8 @@ static void sfp_sm_main(struct sfp *sfp,
  			 * or t_start_up, so assume there is a fault.
  			 */
  			sfp_sm_fault(sfp, SFP_S_INIT_TX_FAULT,
 -				     sfp->sm_fault_retries == N_FAULT_INIT);
-+					!sfp->tx_fault_ignore &&
++					!(sfp->state_ignore_mask & SFP_F_TX_FAULT) &&
 +				     (sfp->sm_fault_retries == N_FAULT_INIT));
  		} else if (event == SFP_E_TIMEOUT || event == SFP_E_TX_CLEAR) {
  	init_done:
  			/* Create mdiobus and start trying for PHY */
-@@ -2841,10 +2845,12 @@ static void sfp_check_state(struct sfp *sfp)
+@@ -2896,8 +2900,10 @@ static void sfp_check_state(struct sfp *
+ 	rtnl_lock();
  	mutex_lock(&sfp->st_mutex);
  	state = sfp_get_state(sfp);
++	state &= ~sfp->state_ignore_mask;
  	changed = state ^ sfp->state;
--	if (sfp->tx_fault_ignore)
-+	if (sfp->tx_fault_ignore) {
- 		changed &= SFP_F_PRESENT | SFP_F_LOS;
--	else
-+		state &= ~SFP_F_TX_FAULT;
-+	} else {
- 		changed &= SFP_F_PRESENT | SFP_F_LOS | SFP_F_TX_FAULT;
-+	}
+-	changed &= SFP_F_PRESENT | SFP_F_LOS | SFP_F_TX_FAULT;
++	changed &= (SFP_F_PRESENT | SFP_F_LOS | SFP_F_TX_FAULT) &
++		   ~sfp->state_ignore_mask;
  
  	for (i = 0; i < GPIO_MAX; i++)
  		if (changed & BIT(i))
--- 
-2.34.1
-

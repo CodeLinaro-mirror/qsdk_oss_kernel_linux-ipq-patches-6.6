@@ -59,7 +59,7 @@ index 7dc1fbe5b387..35df8d005d1a 100644
  
  #ifdef CONFIG_IPQ_PON
  	/* packets processed by pon_iftrap_......() */
-@@ -3416,7 +3418,7 @@ static inline struct sk_buff *netdev_alloc_skb(struct net_device *dev,
+@@ -3448,7 +3450,7 @@ static inline struct sk_buff *netdev_all
  static inline struct sk_buff *netdev_alloc_skb_fast(struct net_device *dev,
  						    unsigned int length)
  {
@@ -94,7 +94,7 @@ diff --git a/net/core/skbuff.c b/net/core/skbuff.c
 index 8e17dbfc098e..37163fbce873 100644
 --- a/net/core/skbuff.c
 +++ b/net/core/skbuff.c
-@@ -730,7 +730,12 @@ static void *kmalloc_reserve(unsigned int *size, gfp_t flags, int node,
+@@ -733,7 +733,12 @@ static void *kmalloc_reserve(unsigned in
  	unsigned int cache_size;
  
  	obj_size = SKB_HEAD_ALIGN(*size);
@@ -108,7 +108,7 @@ index 8e17dbfc098e..37163fbce873 100644
  	    !(flags & KMALLOC_NOT_NORMAL_BITS)) ||
  	    (obj_size > SZ_2K && obj_size <= SKB_DATA_CACHE_SIZE_2100)) {
  		cache = skb_select_data_cache(obj_size, &cache_size);
-@@ -879,31 +884,6 @@ struct sk_buff *__netdev_alloc_skb(struct net_device *dev,
+@@ -882,31 +887,6 @@ struct sk_buff *__netdev_alloc_skb(struc
  {
  	struct sk_buff *skb;
  	unsigned int len = length;
@@ -140,15 +140,7 @@ index 8e17dbfc098e..37163fbce873 100644
  	struct page_frag_cache *nc;
  	bool pfmemalloc;
  	bool page_frag_alloc_enable = true;
-@@ -911,7 +891,6 @@ struct sk_buff *__netdev_alloc_skb(struct net_device *dev,
- 
- 	len += NET_SKB_PAD;
- 
--
- #ifdef CONFIG_ALLOC_SKB_PAGE_FRAG_DISABLE
- 	page_frag_alloc_enable = false;
- #endif
-@@ -957,7 +936,6 @@ struct sk_buff *__netdev_alloc_skb(struct net_device *dev,
+@@ -959,7 +939,6 @@ struct sk_buff *__netdev_alloc_skb(struc
  	if (pfmemalloc)
  		skb->pfmemalloc = 1;
  	skb->head_frag = 1;
@@ -156,7 +148,7 @@ index 8e17dbfc098e..37163fbce873 100644
  
  skb_success:
  	skb_reserve(skb, NET_SKB_PAD);
-@@ -1004,6 +982,7 @@ struct sk_buff *__netdev_alloc_skb_fast(struct net_device *dev,
+@@ -1006,6 +985,7 @@ struct sk_buff *__netdev_alloc_skb_fast(
  	if (!skb)
  		goto skb_fail;
  
@@ -164,7 +156,7 @@ index 8e17dbfc098e..37163fbce873 100644
  	goto skb_success;
  #else
  	struct page_frag_cache *nc;
-@@ -1114,11 +1093,13 @@ struct sk_buff *__netdev_alloc_skb_no_skb_reset(struct net_device *dev,
+@@ -1116,11 +1096,13 @@ struct sk_buff *__netdev_alloc_skb_no_sk
  	if (unlikely(length > SKB_RECYCLE_SIZE))
  		len = length;
  
@@ -178,6 +170,3 @@ index 8e17dbfc098e..37163fbce873 100644
  	skb_reserve(skb, NET_SKB_PAD);
  	skb->dev = dev;
  	return skb;
--- 
-2.34.1
-
