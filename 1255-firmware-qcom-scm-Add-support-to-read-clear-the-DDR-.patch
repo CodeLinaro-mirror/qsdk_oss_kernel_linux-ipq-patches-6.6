@@ -1,0 +1,110 @@
+From 24c0d9fd7c5669d11e0c28f179912d7cd1360131 Mon Sep 17 00:00:00 2001
+From: Kathiravan Thirumoorthy <kathirav@qti.qualcomm.com>
+Date: Mon, 21 Sep 2026 15:09:53 +0530
+Subject: [PATCH] firmware: qcom: scm: Add support to read / clear the DDR
+ Retain BIT in TCSR
+
+Upon enbaling the 'dump_to_mem' feature in U-Boot, U-Boot writes the
+minidump into the dedicated DDR memory region. After that, U-Boot sets
+the BIT(15) in the TCSR_BOOT_MISC to indicate the TZ to put the DDR
+again in the self refresh mode to keep the DDR contents intact to read
+it from kernel in the next mission mode.
+
+After the dump is read in kernel, BIT(15) will be cleared to allow the
+next reboot initialize the DDR fully.
+
+Change-Id: Ia4cef503783914d129c35931b87022844e5c6a9c
+Signed-off-by: Kathiravan Thirumoorthy <kathirav@qti.qualcomm.com>
+---
+ drivers/firmware/qcom_scm.c            | 52 ++++++++++++++++++++++++++
+ include/linux/firmware/qcom/qcom_scm.h |  2 +
+ 2 files changed, 54 insertions(+)
+
+diff --git a/drivers/firmware/qcom_scm.c b/drivers/firmware/qcom_scm.c
+index 6978f348b093..7f86bdd4dfed 100644
+--- a/drivers/firmware/qcom_scm.c
++++ b/drivers/firmware/qcom_scm.c
+@@ -3447,15 +3447,67 @@ static ssize_t tcsr_boot_info_store(struct device *device,
+ 	return count;
+ }
+ 
++static ssize_t ddr_retain_show(struct device *device,
++			       struct device_attribute *attr,
++			       char *buf)
++{
++	u32 val;
++	int ret;
++
++	ret = qcom_scm_io_readl(__scm->dload_mode_addr, &val);
++	if (ret) {
++		dev_err(__scm->dev,
++			"dload secure read failed with err: %d\n", ret);
++		return -EINVAL;
++	}
++
++	return sysfs_emit(buf, "%d\n", (val & DDR_RETAIN_BIT) ? 1 : 0);
++}
++
++static ssize_t ddr_retain_store(struct device *device,
++				struct device_attribute *attr,
++				const char *buf, size_t count)
++{
++	u32 val;
++	int ret;
++
++	if (kstrtouint(buf, 0, &val))
++		return -EINVAL;
++
++	if (val != 0)
++		return -EINVAL;
++
++	ret = qcom_scm_io_readl(__scm->dload_mode_addr, &val);
++	if (ret) {
++		dev_err(__scm->dev,
++			"dload secure read failed with err: %d\n", ret);
++		return -EINVAL;
++	}
++
++	val &= ~(DDR_RETAIN_BIT);
++
++	ret = qcom_scm_io_writel(__scm->dload_mode_addr, val);
++	if (ret) {
++		dev_err(__scm->dev,
++			"clearing ddr retain bit failed with err: %d\n", ret);
++		return -EINVAL;
++	}
++
++	return count;
++}
++
++
+ static DEVICE_ATTR_RO(trymode_inprogress);
+ static DEVICE_ATTR_RW(trybit);
+ static DEVICE_ATTR_WO(tcsr_boot_info);
++static DEVICE_ATTR_RW(ddr_retain);
+ 
+ static struct attribute *qcom_firmware_attrs[] = {
+ 	&dev_attr_hlos_done.attr,
+ 	&dev_attr_trymode_inprogress.attr,
+ 	&dev_attr_trybit.attr,
+ 	&dev_attr_tcsr_boot_info.attr,
++	&dev_attr_ddr_retain.attr,
+ 	NULL,
+ };
+ 
+diff --git a/include/linux/firmware/qcom/qcom_scm.h b/include/linux/firmware/qcom/qcom_scm.h
+index 88b2eff274bf..15fb243dab0c 100644
+--- a/include/linux/firmware/qcom/qcom_scm.h
++++ b/include/linux/firmware/qcom/qcom_scm.h
+@@ -43,6 +43,8 @@
+ #define NAND_BLOCK_SIZE			0x20000 /* 128K */
+ #define SBL_MAGIC_NUM_OFFSET		0xC /* 12 Bytes of Magic Num */
+ 
++#define DDR_RETAIN_BIT			BIT(15)
++
+ struct fuse_payload {
+ 	uint32_t fuse_addr;
+ 	uint32_t lsb_val;
+-- 
+2.34.1
+
