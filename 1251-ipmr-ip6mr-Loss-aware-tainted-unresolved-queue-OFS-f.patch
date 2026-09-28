@@ -36,11 +36,10 @@ diff --git a/include/linux/mroute_base.h b/include/linux/mroute_base.h
 index 58a2401e4b55..2dad17b25139 100644
 --- a/include/linux/mroute_base.h
 +++ b/include/linux/mroute_base.h
-@@ -9,6 +9,16 @@
- #include <net/fib_notifier.h>
+@@ -10,6 +10,16 @@
  #include <net/ip_fib.h>
  
-+/**
+ /**
 + * enum ipmr_overflow_policy - behaviour when unresolved MFC queue is overflow
 + * @IPMR_OVERFLOW_PURGE:  discard all queued SKBs on resolution (default, OFS-safe)
 + * @IPMR_OVERFLOW_REPLAY: replay surviving SKBs before publish (low-rate opt-in)
@@ -50,9 +49,10 @@ index 58a2401e4b55..2dad17b25139 100644
 +	IPMR_OVERFLOW_REPLAY = 1,
 +};
 +
- /**
++/**
   * struct vif_device - interface representor for multicast routing
   * @dev: network device being used
+  * @dev_tracker: refcount tracker for @dev reference
 @@ -141,6 +151,8 @@ struct mr_mfc {
  		struct {
  			unsigned long expires;
@@ -66,7 +66,7 @@ diff --git a/include/net/netns/ipv4.h b/include/net/netns/ipv4.h
 index 7a41c4791536..14a958344399 100644
 --- a/include/net/netns/ipv4.h
 +++ b/include/net/netns/ipv4.h
-@@ -236,6 +236,7 @@ struct netns_ipv4 {
+@@ -264,6 +264,7 @@ struct netns_ipv4 {
  
  	struct fib_notifier_ops	*ipmr_notifier_ops;
  	unsigned int	ipmr_seq;	/* protected by rtnl_mutex */
@@ -90,7 +90,7 @@ diff --git a/net/ipv4/ipmr.c b/net/ipv4/ipmr.c
 index fdde4d5e5c69..3f541a59acb4 100644
 --- a/net/ipv4/ipmr.c
 +++ b/net/ipv4/ipmr.c
-@@ -1004,6 +1004,17 @@ static void ipmr_expire_process(struct timer_list *t)
+@@ -1004,6 +1004,17 @@ static void ipmr_expire_process(struct t
  	expires = 10*HZ;
  
  	list_for_each_entry_safe(c, next, &mrt->mfc_unres_queue, list) {
@@ -108,7 +108,7 @@ index fdde4d5e5c69..3f541a59acb4 100644
  		if (time_after(c->mfc_un.unres.expires, now)) {
  			unsigned long interval = c->mfc_un.unres.expires - now;
  			if (interval < expires)
-@@ -1211,6 +1222,8 @@ static struct mfc_cache *ipmr_cache_alloc_unres(void)
+@@ -1211,6 +1222,8 @@ static struct mfc_cache *ipmr_cache_allo
  	if (c) {
  		skb_queue_head_init(&c->_c.mfc_un.unres.unresolved);
  		c->_c.mfc_un.unres.expires = jiffies + 10 * HZ;
@@ -117,7 +117,7 @@ index fdde4d5e5c69..3f541a59acb4 100644
  	}
  	return c;
  }
-@@ -1222,7 +1235,25 @@ static void ipmr_cache_resolve(struct net *net, struct mr_table *mrt,
+@@ -1222,7 +1235,25 @@ static void ipmr_cache_resolve(struct ne
  	struct sk_buff *skb;
  	struct nlmsgerr *e;
  
@@ -144,7 +144,7 @@ index fdde4d5e5c69..3f541a59acb4 100644
  	while ((skb = __skb_dequeue(&uc->_c.mfc_un.unres.unresolved))) {
  		if (ip_hdr(skb)->version == 0) {
  			struct nlmsghdr *nlh = skb_pull(skb,
-@@ -1242,10 +1273,18 @@ static void ipmr_cache_resolve(struct net *net, struct mr_table *mrt,
+@@ -1242,10 +1273,18 @@ static void ipmr_cache_resolve(struct ne
  			}
  
  			rtnl_unicast(skb, net, NETLINK_CB(skb).portid);
@@ -164,7 +164,7 @@ index fdde4d5e5c69..3f541a59acb4 100644
  		}
  	}
  }
-@@ -1393,8 +1432,25 @@ static int ipmr_cache_unresolved(struct mr_table *mrt, vifi_t vifi,
+@@ -1393,8 +1432,25 @@ static int ipmr_cache_unresolved(struct
  				  c->_c.mfc_un.unres.expires);
  	}
  
@@ -192,7 +192,7 @@ index fdde4d5e5c69..3f541a59acb4 100644
  		kfree_skb(skb);
  		err = -ENOBUFS;
  	} else {
-@@ -1481,16 +1537,12 @@ static int ipmr_mfc_add(struct net *net, struct mr_table *mrt,
+@@ -1481,16 +1537,12 @@ static int ipmr_mfc_add(struct net *net,
  	if (!mrtsock)
  		c->_c.mfc_flags |= MFC_STATIC;
  
@@ -215,7 +215,7 @@ index fdde4d5e5c69..3f541a59acb4 100644
  	 */
  	found = false;
  	spin_lock_bh(&mfc_unres_lock);
-@@ -1498,20 +1550,43 @@ static int ipmr_mfc_add(struct net *net, struct mr_table *mrt,
+@@ -1498,20 +1550,43 @@ static int ipmr_mfc_add(struct net *net,
  		uc = (struct mfc_cache *)_uc;
  		if (uc->mfc_origin == c->mfc_origin &&
  		    uc->mfc_mcastgrp == c->mfc_mcastgrp) {
@@ -276,7 +276,7 @@ index 6ac890b4073f..4a2e6af2dd18 100644
  #include <net/icmp.h>
  #include <net/ip.h>
  #include <net/ip_fib.h>
-@@ -877,6 +878,17 @@ static struct ctl_table ipv4_net_table[] = {
+@@ -877,6 +878,17 @@ static struct ctl_table ipv4_net_table[]
  		.mode		= 0644,
  		.proc_handler	= proc_dointvec
  	},
@@ -294,7 +294,7 @@ index 6ac890b4073f..4a2e6af2dd18 100644
  #ifdef CONFIG_IP_MULTICAST
  	{
  		.procname	= "igmp_qrv",
-@@ -1528,6 +1540,7 @@ static __net_init int ipv4_sysctl_init_net(struct net *net)
+@@ -1551,6 +1563,7 @@ static __net_init int ipv4_sysctl_init_n
  	if (!net->ipv4.sysctl_local_reserved_ports)
  		goto err_ports;
  
@@ -306,7 +306,7 @@ diff --git a/net/ipv6/ip6mr.c b/net/ipv6/ip6mr.c
 index 8b1c61553d1c..436a73855701 100644
 --- a/net/ipv6/ip6mr.c
 +++ b/net/ipv6/ip6mr.c
-@@ -1043,6 +1043,16 @@ static void ipmr_do_expire_process(struct mr_table *mrt)
+@@ -1043,6 +1043,16 @@ static void ipmr_do_expire_process(struc
  	struct mr_mfc *c, *next;
  
  	list_for_each_entry_safe(c, next, &mrt->mfc_unres_queue, list) {
@@ -323,7 +323,7 @@ index 8b1c61553d1c..436a73855701 100644
  		if (time_after(c->mfc_un.unres.expires, now)) {
  			/* not yet... */
  			unsigned long interval = c->mfc_un.unres.expires - now;
-@@ -1238,6 +1248,8 @@ static struct mfc6_cache *ip6mr_cache_alloc_unres(void)
+@@ -1238,6 +1248,8 @@ static struct mfc6_cache *ip6mr_cache_al
  		return NULL;
  	skb_queue_head_init(&c->_c.mfc_un.unres.unresolved);
  	c->_c.mfc_un.unres.expires = jiffies + 10 * HZ;
@@ -332,7 +332,7 @@ index 8b1c61553d1c..436a73855701 100644
  	return c;
  }
  
-@@ -1249,11 +1261,18 @@ static void ip6mr_cache_resolve(struct net *net, struct mr_table *mrt,
+@@ -1249,11 +1261,18 @@ static void ip6mr_cache_resolve(struct n
  				struct mfc6_cache *uc, struct mfc6_cache *c)
  {
  	struct sk_buff *skb;
@@ -353,7 +353,7 @@ index 8b1c61553d1c..436a73855701 100644
  	while ((skb = __skb_dequeue(&uc->_c.mfc_un.unres.unresolved))) {
  		if (ipv6_hdr(skb)->version == 0) {
  			struct nlmsghdr *nlh = skb_pull(skb,
-@@ -1269,10 +1288,18 @@ static void ip6mr_cache_resolve(struct net *net, struct mr_table *mrt,
+@@ -1269,10 +1288,18 @@ static void ip6mr_cache_resolve(struct n
  				((struct nlmsgerr *)nlmsg_data(nlh))->error = -EMSGSIZE;
  			}
  			rtnl_unicast(skb, net, NETLINK_CB(skb).portid);
@@ -373,7 +373,7 @@ index 8b1c61553d1c..436a73855701 100644
  		}
  	}
  }
-@@ -1435,8 +1462,25 @@ static int ip6mr_cache_unresolved(struct mr_table *mrt, mifi_t mifi,
+@@ -1435,8 +1462,25 @@ static int ip6mr_cache_unresolved(struct
  		ipmr_do_expire_process(mrt);
  	}
  
@@ -401,7 +401,7 @@ index 8b1c61553d1c..436a73855701 100644
  		kfree_skb(skb);
  		err = -ENOBUFS;
  	} else {
-@@ -1724,17 +1768,12 @@ static int ip6mr_mfc_add(struct net *net, struct mr_table *mrt,
+@@ -1724,17 +1768,12 @@ static int ip6mr_mfc_add(struct net *net
  	if (!mrtsock)
  		c->_c.mfc_flags |= MFC_STATIC;
  
@@ -425,7 +425,7 @@ index 8b1c61553d1c..436a73855701 100644
  	 */
  	found = false;
  	spin_lock_bh(&mfc_unres_lock);
-@@ -1742,20 +1781,42 @@ static int ip6mr_mfc_add(struct net *net, struct mr_table *mrt,
+@@ -1742,20 +1781,42 @@ static int ip6mr_mfc_add(struct net *net
  		uc = (struct mfc6_cache *)_uc;
  		if (ipv6_addr_equal(&uc->mf6c_origin, &c->mf6c_origin) &&
  		    ipv6_addr_equal(&uc->mf6c_mcastgrp, &c->mf6c_mcastgrp)) {
@@ -485,7 +485,7 @@ index 888676163e90..b318203a0bb7 100644
  #include <net/ndisc.h>
  #include <net/ipv6.h>
  #include <net/addrconf.h>
-@@ -224,6 +225,17 @@ static struct ctl_table ipv6_rotable[] = {
+@@ -224,6 +225,17 @@ static struct ctl_table ipv6_rotable[] =
  		.mode		= 0644,
  		.proc_handler	= proc_dointvec
  	},
@@ -503,7 +503,7 @@ index 888676163e90..b318203a0bb7 100644
  	{
  		.procname	= "mld_qrv",
  		.data		= &sysctl_mld_qrv,
-@@ -295,6 +307,8 @@ static int __net_init ipv6_sysctl_net_init(struct net *net)
+@@ -295,6 +307,8 @@ static int __net_init ipv6_sysctl_net_in
  	if (!net->ipv6.sysctl.icmp_hdr)
  		goto out_unregister_route_table;
  
@@ -512,6 +512,3 @@ index 888676163e90..b318203a0bb7 100644
  	err = 0;
  out:
  	return err;
--- 
-2.34.1
-

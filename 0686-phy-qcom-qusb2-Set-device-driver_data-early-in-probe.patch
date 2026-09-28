@@ -22,7 +22,7 @@ diff --git a/drivers/phy/qualcomm/phy-qcom-qusb2.c b/drivers/phy/qualcomm/phy-qc
 index aee9e1ceefbd..d8f79316b621 100644
 --- a/drivers/phy/qualcomm/phy-qcom-qusb2.c
 +++ b/drivers/phy/qualcomm/phy-qcom-qusb2.c
-@@ -997,6 +997,8 @@ static int qusb2_phy_probe(struct platform_device *pdev)
+@@ -997,6 +997,8 @@ static int qusb2_phy_probe(struct platfo
  	qphy = devm_kzalloc(dev, sizeof(*qphy), GFP_KERNEL);
  	if (!qphy)
  		return -ENOMEM;
@@ -31,14 +31,3 @@ index aee9e1ceefbd..d8f79316b621 100644
  	or = &qphy->overrides;
  
  	qphy->base = devm_platform_ioremap_resource(pdev, 0);
-@@ -1109,7 +1111,6 @@ static int qusb2_phy_probe(struct platform_device *pdev)
- 	}
- 	qphy->phy = generic_phy;
- 
--	dev_set_drvdata(dev, qphy);
- 	phy_set_drvdata(generic_phy, qphy);
- 
- 	phy_provider = devm_of_phy_provider_register(dev, of_phy_simple_xlate);
--- 
-2.34.1
-

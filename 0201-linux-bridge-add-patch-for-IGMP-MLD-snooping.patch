@@ -25,21 +25,15 @@ diff --git a/include/linux/if_bridge.h b/include/linux/if_bridge.h
 index a29cbc16d08c..f352ec4191cb 100644
 --- a/include/linux/if_bridge.h
 +++ b/include/linux/if_bridge.h
-@@ -66,11 +66,13 @@ struct br_ip_list {
+@@ -66,6 +66,7 @@ struct br_ip_list {
  #define BR_DEFAULT_AGEING_TIME	(300 * HZ)
  
  struct net_bridge;
 +struct net_bridge_port;
- void brioctl_set(int (*hook)(struct net *net, struct net_bridge *br,
- 			     unsigned int cmd, struct ifreq *ifr,
+ void brioctl_set(int (*hook)(struct net *net, unsigned int cmd,
  			     void __user *uarg));
- int br_ioctl_call(struct net *net, struct net_bridge *br, unsigned int cmd,
- 		  struct ifreq *ifr, void __user *uarg);
-+
- extern struct net_device *br_port_dev_get(struct net_device *dev,
- 					  unsigned char *addr,
- 					  struct sk_buff *skb);
-@@ -230,4 +232,8 @@ extern br_port_dev_get_hook_t __rcu *br_port_dev_get_hook;
+ int br_ioctl_call(struct net *net, unsigned int cmd, void __user *uarg);
+@@ -228,4 +229,8 @@ extern br_port_dev_get_hook_t __rcu *br_
  
  typedef void (br_notify_hook_t)(int group, int event, const void *ptr);
  extern br_notify_hook_t __rcu *br_notify_hook;
@@ -52,7 +46,7 @@ diff --git a/net/bridge/br_device.c b/net/bridge/br_device.c
 index 9a5ea06236bd..4262a2ae0220 100644
 --- a/net/bridge/br_device.c
 +++ b/net/bridge/br_device.c
-@@ -83,6 +83,11 @@ netdev_tx_t br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
+@@ -89,6 +89,11 @@ netdev_tx_t br_dev_xmit(struct sk_buff *
  	if (is_broadcast_ether_addr(dest)) {
  		br_flood(br, skb, BR_PKT_BROADCAST, false, true, vid);
  	} else if (is_multicast_ether_addr(dest)) {
@@ -68,7 +62,7 @@ diff --git a/net/bridge/br_input.c b/net/bridge/br_input.c
 index 2ff896f6cf39..348a6092a291 100644
 --- a/net/bridge/br_input.c
 +++ b/net/bridge/br_input.c
-@@ -30,7 +30,11 @@ br_netif_receive_skb(struct net *net, struct sock *sk, struct sk_buff *skb)
+@@ -30,7 +30,11 @@ br_netif_receive_skb(struct net *net, st
  	return netif_receive_skb(skb);
  }
  
@@ -81,7 +75,7 @@ index 2ff896f6cf39..348a6092a291 100644
  {
  	struct net_device *indev, *brdev = BR_INPUT_SKB_CB(skb)->brdev;
  	struct net_bridge *br = netdev_priv(brdev);
-@@ -71,6 +75,7 @@ static int br_pass_frame_up(struct sk_buff *skb)
+@@ -71,6 +75,7 @@ static int br_pass_frame_up(struct sk_bu
  		       dev_net(indev), NULL, skb, indev, NULL,
  		       br_netif_receive_skb);
  }
@@ -89,7 +83,7 @@ index 2ff896f6cf39..348a6092a291 100644
  
  /* note: already called with rcu_read_lock */
  int br_handle_frame_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
-@@ -84,7 +89,7 @@ int br_handle_frame_finish(struct net *net, struct sock *sk, struct sk_buff *skb
+@@ -84,7 +89,7 @@ int br_handle_frame_finish(struct net *n
  	struct net_bridge_mcast *brmctx;
  	struct net_bridge_vlan *vlan;
  	struct net_bridge *br;
@@ -98,7 +92,7 @@ index 2ff896f6cf39..348a6092a291 100644
  	u16 vid = 0;
  	u8 state;
  
-@@ -180,6 +185,10 @@ int br_handle_frame_finish(struct net *net, struct sock *sk, struct sk_buff *skb
+@@ -180,6 +185,10 @@ int br_handle_frame_finish(struct net *n
  
  	switch (pkt_type) {
  	case BR_PKT_MULTICAST:
@@ -113,7 +107,7 @@ diff --git a/net/bridge/br_private.h b/net/bridge/br_private.h
 index 6e1f4cfc64b0..a760f6ab4c56 100644
 --- a/net/bridge/br_private.h
 +++ b/net/bridge/br_private.h
-@@ -907,6 +907,7 @@ void br_manage_promisc(struct net_bridge *br);
+@@ -912,6 +912,7 @@ void br_manage_promisc(struct net_bridge
  int nbp_backup_change(struct net_bridge_port *p, struct net_device *backup_dev);
  
  /* br_input.c */
@@ -121,7 +115,7 @@ index 6e1f4cfc64b0..a760f6ab4c56 100644
  int br_handle_frame_finish(struct net *net, struct sock *sk, struct sk_buff *skb);
  rx_handler_func_t *br_get_rx_handler(const struct net_device *dev);
  
-@@ -2280,4 +2281,8 @@ void br_do_suppress_nd(struct sk_buff *skb, struct net_bridge *br,
+@@ -2301,4 +2302,8 @@ void br_do_suppress_nd(struct sk_buff *s
  		       u16 vid, struct net_bridge_port *p, struct nd_msg *msg);
  struct nd_msg *br_is_nd_neigh_msg(struct sk_buff *skb, struct nd_msg *m);
  bool br_is_neigh_suppress_enabled(const struct net_bridge_port *p, u16 vid);
@@ -130,6 +124,3 @@ index 6e1f4cfc64b0..a760f6ab4c56 100644
 +		(__hook ? (__hook(__args)) : (__default))
 +
  #endif
--- 
-2.34.1
-

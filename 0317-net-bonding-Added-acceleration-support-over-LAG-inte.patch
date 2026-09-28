@@ -42,7 +42,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_3ad.c
 ===================================================================
 --- linux-6.6.116.orig/drivers/net/bonding/bond_3ad.c	2026-01-23 22:09:50.185901563 +0530
 +++ linux-6.6.116/drivers/net/bonding/bond_3ad.c	2026-01-23 22:09:50.181901363 +0530
-@@ -119,6 +119,38 @@
+@@ -115,6 +115,38 @@ static void ad_marker_response_received(
  					struct port *port);
  static void ad_update_actor_keys(struct port *port, bool reset);
  
@@ -81,7 +81,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_3ad.c
  
  /* ================= api to bonding and kernel code ================== */
  
-@@ -481,7 +513,6 @@
+@@ -478,7 +510,6 @@ static u16 __ad_timer_to_ticks(u16 timer
  	return retval;
  }
  
@@ -89,7 +89,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_3ad.c
  /* ================= ad_rx_machine helper functions ================== */
  
  /**
-@@ -1163,6 +1194,28 @@
+@@ -1162,6 +1193,28 @@ static void ad_mux_machine(struct port *
  			ad_disable_collecting_distributing(port,
  							   update_slave_arr);
  			port->ntt = true;
@@ -118,15 +118,31 @@ Index: linux-6.6.116/drivers/net/bonding/bond_3ad.c
  			break;
  		case AD_MUX_COLLECTING_DISTRIBUTING:
  			port->actor_oper_port_state |= LACP_STATE_COLLECTING;
-@@ -2066,6 +2119,7 @@
+@@ -2025,7 +2078,6 @@ static void ad_initialize_port(struct po
+ static void ad_enable_collecting(struct port *port)
+ {
+ 	struct aggregator *aggregator = rcu_dereference(port->aggregator);
+-
+ 	if (aggregator->is_active) {
+ 		struct slave *slave = port->slave;
+ 
+@@ -2045,7 +2097,6 @@ static void ad_enable_collecting(struct
+ static void ad_disable_distributing(struct port *port, bool *update_slave_arr)
+ {
+ 	struct aggregator *aggregator = rcu_dereference(port->aggregator);
+-
+ 	if (aggregator && __agg_has_partner(aggregator)) {
+ 		slave_dbg(port->slave->bond->dev, port->slave->dev,
+ 			  "Disabling distributing on port %d (LAG %d)\n",
+@@ -2068,6 +2119,7 @@ static void ad_enable_collecting_distrib
  					      bool *update_slave_arr)
  {
- 	if (port->aggregator->is_active) {
-+		struct bond_cb *lag_cb_main;
+ 	struct aggregator *aggregator = rcu_dereference(port->aggregator);
++	struct bond_cb *lag_cb_main;
+ 
+ 	if (aggregator->is_active) {
  		slave_dbg(port->slave->bond->dev, port->slave->dev,
- 			  "Enabling port %d (LAG %d)\n",
- 			  port->actor_port_number,
-@@ -2073,6 +2127,14 @@
+@@ -2077,6 +2129,14 @@ static void ad_enable_collecting_distrib
  		__enable_port(port);
  		/* Slave array needs update */
  		*update_slave_arr = true;
@@ -141,7 +157,15 @@ Index: linux-6.6.116/drivers/net/bonding/bond_3ad.c
  	}
  }
  
-@@ -2832,6 +2894,102 @@
+@@ -2089,7 +2149,6 @@ static void ad_disable_collecting_distri
+ 					       bool *update_slave_arr)
+ {
+ 	struct aggregator *aggregator = rcu_dereference(port->aggregator);
+-
+ 	if (aggregator && __agg_has_partner(aggregator)) {
+ 		slave_dbg(port->slave->bond->dev, port->slave->dev,
+ 			  "Disabling port %d (LAG %d)\n",
+@@ -2840,6 +2899,102 @@ int bond_3ad_get_active_agg_info(struct
  	return ret;
  }
  
@@ -248,15 +272,15 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
 ===================================================================
 --- linux-6.6.116.orig/drivers/net/bonding/bond_main.c	2026-01-23 22:09:50.185901563 +0530
 +++ linux-6.6.116/drivers/net/bonding/bond_main.c	2026-01-23 22:09:50.185901563 +0530
-@@ -210,6 +210,7 @@
+@@ -210,6 +210,7 @@ atomic_t netpoll_block_tx = ATOMIC_INIT(
  #endif
  
  unsigned int bond_net_id __read_mostly;
 +static unsigned long bond_id_mask = 0xFFFFFFF0;
  
- static const struct flow_dissector_key flow_keys_bonding_keys[] = {
- 	{
-@@ -287,6 +288,19 @@
+ DEFINE_STATIC_KEY_FALSE(bond_bcast_neigh_enabled);
+ 
+@@ -289,6 +290,19 @@ const char *bond_mode_name(int mode)
  	return names[mode];
  }
  
@@ -276,7 +300,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
  /**
   * bond_dev_queue_xmit - Prepare skb for xmit.
   *
-@@ -1231,6 +1245,21 @@
+@@ -1241,6 +1255,21 @@ void bond_change_active_slave(struct bon
  			if (BOND_MODE(bond) == BOND_MODE_8023AD)
  				bond_3ad_handle_link_change(new_active, BOND_LINK_UP);
  
@@ -298,7 +322,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
  			if (bond_is_lb(bond))
  				bond_alb_handle_link_change(bond, new_active, BOND_LINK_UP);
  		} else {
-@@ -1876,6 +1905,7 @@
+@@ -1850,6 +1879,7 @@ int bond_enslave(struct net_device *bond
  	const struct net_device_ops *slave_ops = slave_dev->netdev_ops;
  	struct slave *new_slave = NULL, *prev_slave;
  	struct sockaddr_storage ss;
@@ -306,7 +330,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
  	int link_reporting;
  	int res = 0, i;
  
-@@ -2337,6 +2367,13 @@
+@@ -2323,6 +2353,13 @@ skip_mac_set:
  		   bond_is_active_slave(new_slave) ? "an active" : "a backup",
  		   new_slave->link != BOND_LINK_DOWN ? "an up" : "a down");
  
@@ -320,7 +344,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
  	/* enslave is successful */
  	bond_queue_slave_event(new_slave);
  	return 0;
-@@ -2402,6 +2439,13 @@
+@@ -2388,6 +2425,13 @@ err_undo_flags:
  		}
  	}
  
@@ -334,7 +358,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
  	return res;
  }
  
-@@ -2423,6 +2467,7 @@
+@@ -2409,6 +2453,7 @@ static int __bond_release_one(struct net
  	struct bonding *bond = netdev_priv(bond_dev);
  	struct slave *slave, *oldcurrent;
  	struct sockaddr_storage ss;
@@ -342,7 +366,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
  	int old_flags = bond_dev->flags;
  	netdev_features_t old_features = bond_dev->features;
  
-@@ -2445,6 +2490,13 @@
+@@ -2431,6 +2476,13 @@ static int __bond_release_one(struct net
  
  	bond_set_slave_inactive_flags(slave, BOND_SLAVE_NOTIFY_NOW);
  
@@ -356,7 +380,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
  	bond_sysfs_slave_del(slave);
  
  	/* recompute stats just before removing the slave */
-@@ -2773,8 +2825,8 @@
+@@ -2759,8 +2811,8 @@ static void bond_miimon_commit(struct bo
  	struct slave *slave, *primary, *active;
  	bool do_failover = false;
  	struct list_head *iter;
@@ -367,7 +391,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
  
  	bond_for_each_slave(bond, slave, iter) {
  		switch (slave->link_new_state) {
-@@ -2812,6 +2864,10 @@
+@@ -2798,6 +2850,10 @@ static void bond_miimon_commit(struct bo
  				bond_set_active_slave(slave);
  			}
  
@@ -378,7 +402,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
  			slave_info(bond->dev, slave->dev, "link status definitely up, %u Mbps %s duplex\n",
  				   slave->speed == SPEED_UNKNOWN ? 0 : slave->speed,
  				   slave->duplex ? "full" : "half");
-@@ -2860,6 +2916,14 @@
+@@ -2852,6 +2908,14 @@ static void bond_miimon_commit(struct bo
  		unblock_netpoll_tx();
  	}
  
@@ -393,7 +417,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
  	bond_set_carrier(bond);
  }
  
-@@ -4107,11 +4171,221 @@
+@@ -4101,11 +4165,221 @@ static inline u32 bond_eth_hash(struct s
  		return 0;
  
  	ep = (struct ethhdr *)(data + mhoff);
@@ -616,7 +640,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
  {
  	const struct ipv6hdr *iph6;
  	const struct iphdr *iph;
-@@ -5237,15 +5511,16 @@
+@@ -5276,15 +5550,16 @@ static netdev_tx_t bond_3ad_xor_xmit(str
  				     struct net_device *dev)
  {
  	struct bonding *bond = netdev_priv(dev);
@@ -639,19 +663,22 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
 +	return bond_dev_queue_xmit(bond, skb, outdev);
  }
  
- /* in broadcast mode, we send everything to all usable interfaces. */
-@@ -5495,8 +5770,9 @@
+ /* in broadcast mode, we send everything to all or usable slave interfaces.
+@@ -5544,11 +5819,11 @@ static netdev_tx_t __bond_start_xmit(str
  		return bond_xmit_roundrobin(skb, dev);
  	case BOND_MODE_ACTIVEBACKUP:
  		return bond_xmit_activebackup(skb, dev);
--	case BOND_MODE_8023AD:
- 	case BOND_MODE_XOR:
++	case BOND_MODE_XOR:
 +		return bond_xmit_xor(skb, dev);
-+	case BOND_MODE_8023AD:
+ 	case BOND_MODE_8023AD:
+ 		if (bond_should_broadcast_neighbor(skb, dev))
+ 			return bond_xmit_broadcast(skb, dev, false);
+-		fallthrough;
+-	case BOND_MODE_XOR:
  		return bond_3ad_xor_xmit(skb, dev);
  	case BOND_MODE_BROADCAST:
- 		return bond_xmit_broadcast(skb, dev);
-@@ -5933,6 +6209,9 @@
+ 		return bond_xmit_broadcast(skb, dev, true);
+@@ -5988,6 +6263,9 @@ static void bond_destructor(struct net_d
  	if (bond->wq)
  		destroy_workqueue(bond->wq);
  
@@ -661,7 +688,7 @@ Index: linux-6.6.116/drivers/net/bonding/bond_main.c
  	free_percpu(bond->rr_tx_counter);
  }
  
-@@ -6487,6 +6766,11 @@
+@@ -6544,6 +6822,11 @@ int bond_create(struct net *net, const c
  
  	bond_work_init_all(bond);
  
@@ -677,7 +704,7 @@ Index: linux-6.6.116/include/net/bond_3ad.h
 ===================================================================
 --- linux-6.6.116.orig/include/net/bond_3ad.h	2026-01-23 22:09:50.185901563 +0530
 +++ linux-6.6.116/include/net/bond_3ad.h	2026-01-23 22:18:20.283485404 +0530
-@@ -304,6 +304,11 @@
+@@ -305,6 +305,11 @@ int bond_3ad_lacpdu_recv(const struct sk
  			 struct slave *slave);
  int bond_3ad_set_carrier(struct bonding *bond);
  void bond_3ad_update_lacp_rate(struct bonding *bond);
@@ -702,7 +729,7 @@ Index: linux-6.6.116/include/net/bonding.h
  #ifdef CONFIG_NET_POLL_CONTROLLER
  extern atomic_t netpoll_block_tx;
  
-@@ -263,6 +265,7 @@
+@@ -266,6 +268,7 @@ struct bonding {
  	struct mutex ipsec_lock;
  #endif /* CONFIG_XFRM_OFFLOAD */
  	struct bpf_prog *xdp_prog;
@@ -710,7 +737,7 @@ Index: linux-6.6.116/include/net/bonding.h
  };
  
  #define bond_slave_get_rcu(dev) \
-@@ -706,6 +709,11 @@
+@@ -712,6 +715,11 @@ struct bond_vlan_tag *bond_verify_device
  					      int level);
  int bond_update_slave_arr(struct bonding *bond, struct slave *skipslave);
  void bond_slave_arr_work_rearm(struct bonding *bond, unsigned long delay);
@@ -720,9 +747,9 @@ Index: linux-6.6.116/include/net/bonding.h
 +				    __be16 *layer4hdr);
 +
  void bond_work_init_all(struct bonding *bond);
+ void bond_work_cancel_all(struct bonding *bond);
  
- #ifdef CONFIG_PROC_FS
-@@ -810,4 +818,17 @@
+@@ -817,4 +825,17 @@ static inline netdev_tx_t bond_tx_drop(s
  	return NET_XMIT_DROP;
  }
  

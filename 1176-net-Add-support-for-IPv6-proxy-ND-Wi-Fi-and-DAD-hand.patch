@@ -20,7 +20,7 @@ diff --git a/net/bridge/br_arp_nd_proxy.c b/net/bridge/br_arp_nd_proxy.c
 index c7869a286df4..e179123ba185 100644
 --- a/net/bridge/br_arp_nd_proxy.c
 +++ b/net/bridge/br_arp_nd_proxy.c
-@@ -310,7 +310,7 @@ static void br_nd_send(struct net_bridge *br, struct net_bridge_port *p,
+@@ -315,7 +315,7 @@ static void br_nd_send(struct net_bridge
  	pip6->priority = ipv6_hdr(request)->priority;
  	pip6->nexthdr = IPPROTO_ICMPV6;
  	pip6->hop_limit = 255;
@@ -29,7 +29,7 @@ index c7869a286df4..e179123ba185 100644
  	pip6->saddr = *(struct in6_addr *)n->primary_key;
  
  	skb_pull(reply, sizeof(struct ipv6hdr));
-@@ -407,14 +407,16 @@ void br_do_suppress_nd(struct sk_buff *skb, struct net_bridge *br,
+@@ -412,14 +412,16 @@ void br_do_suppress_nd(struct sk_buff *s
  
  	BR_INPUT_SKB_CB(skb)->proxyarp_replied = 0;
  
@@ -53,7 +53,7 @@ index c7869a286df4..e179123ba185 100644
  	}
  
  	if (msg->icmph.icmp6_type != NDISC_NEIGHBOUR_SOLICITATION)
-@@ -424,10 +426,17 @@ void br_do_suppress_nd(struct sk_buff *skb, struct net_bridge *br,
+@@ -429,10 +431,17 @@ void br_do_suppress_nd(struct sk_buff *s
  	saddr = &iphdr->saddr;
  	daddr = &iphdr->daddr;
  
@@ -75,7 +75,7 @@ index c7869a286df4..e179123ba185 100644
  	}
  
  	if (vid != 0) {
-@@ -440,7 +449,8 @@ void br_do_suppress_nd(struct sk_buff *skb, struct net_bridge *br,
+@@ -445,7 +454,8 @@ void br_do_suppress_nd(struct sk_buff *s
  		vlandev = dev;
  	}
  
@@ -85,13 +85,13 @@ index c7869a286df4..e179123ba185 100644
  		/* its our own ip, so don't proxy reply
  		 * and don't forward to arp suppress ports
  		 */
-@@ -461,7 +471,8 @@ void br_do_suppress_nd(struct sk_buff *skb, struct net_bridge *br,
- 		if (f) {
+@@ -467,7 +477,8 @@ void br_do_suppress_nd(struct sk_buff *s
+ 			const struct net_bridge_port *dst = READ_ONCE(f->dst);
  			bool replied = false;
  
--			if (br_is_neigh_suppress_enabled(f->dst, vid)) {
-+			if (br_is_neigh_suppress_enabled(f->dst, vid) ||
-+			    (f->dst && (f->dst->flags & BR_PROXYARP_WIFI))) {
+-			if (br_is_neigh_suppress_enabled(dst, vid)) {
++			if (br_is_neigh_suppress_enabled(dst, vid) ||
++			    (dst && (dst->flags & BR_PROXYARP_WIFI))) {
  				if (vid != 0)
  					br_nd_send(br, p, skb, n,
  						   skb->vlan_proto,
@@ -99,14 +99,11 @@ diff --git a/net/bridge/br_input.c b/net/bridge/br_input.c
 index c59df3fd87c8..612264b78781 100644
 --- a/net/bridge/br_input.c
 +++ b/net/bridge/br_input.c
-@@ -181,7 +181,6 @@ int br_handle_frame_finish(struct net *net, struct sock *sk, struct sk_buff *skb
+@@ -181,7 +181,6 @@ int br_handle_frame_finish(struct net *n
  		br_do_proxy_suppress_arp(skb, br, vid, p);
- 	} else if (IS_ENABLED(CONFIG_IPV6) &&
+ 	} else if (ipv6_mod_enabled() &&
  		   skb->protocol == htons(ETH_P_IPV6) &&
 -		   br_opt_get(br, BROPT_NEIGH_SUPPRESS_ENABLED) &&
  		   pskb_may_pull(skb, sizeof(struct ipv6hdr) +
  				 sizeof(struct nd_msg)) &&
  		   ipv6_hdr(skb)->nexthdr == IPPROTO_ICMPV6) {
--- 
-2.34.1
-

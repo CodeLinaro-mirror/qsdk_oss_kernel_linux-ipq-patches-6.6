@@ -37,7 +37,7 @@ diff --git a/fs/locks.c b/fs/locks.c
 index 76ad05f8070a..f7bd78606387 100644
 --- a/fs/locks.c
 +++ b/fs/locks.c
-@@ -2897,6 +2897,8 @@ static const struct seq_operations locks_seq_operations = {
+@@ -2903,6 +2903,8 @@ static const struct seq_operations locks
  
  static int __init proc_locks_init(void)
  {
@@ -66,7 +66,7 @@ diff --git a/fs/proc/consoles.c b/fs/proc/consoles.c
 index e0758fe7936d..bb11c39fceca 100644
 --- a/fs/proc/consoles.c
 +++ b/fs/proc/consoles.c
-@@ -107,6 +107,9 @@ static const struct seq_operations consoles_op = {
+@@ -107,6 +107,9 @@ static const struct seq_operations conso
  
  static int __init proc_consoles_init(void)
  {
@@ -80,7 +80,7 @@ diff --git a/fs/proc/proc_tty.c b/fs/proc/proc_tty.c
 index 5c6a5ceab2f1..0e83f4daedf0 100644
 --- a/fs/proc/proc_tty.c
 +++ b/fs/proc/proc_tty.c
-@@ -131,7 +131,10 @@ static const struct seq_operations tty_drivers_op = {
+@@ -131,7 +131,10 @@ static const struct seq_operations tty_d
  void proc_tty_register_driver(struct tty_driver *driver)
  {
  	struct proc_dir_entry *ent;
@@ -92,7 +92,7 @@ index 5c6a5ceab2f1..0e83f4daedf0 100644
  	if (!driver->driver_name || driver->proc_entry ||
  	    !driver->ops->proc_show)
  		return;
-@@ -148,6 +151,9 @@ void proc_tty_unregister_driver(struct tty_driver *driver)
+@@ -148,6 +151,9 @@ void proc_tty_unregister_driver(struct t
  {
  	struct proc_dir_entry *ent;
  
@@ -102,7 +102,7 @@ index 5c6a5ceab2f1..0e83f4daedf0 100644
  	ent = driver->proc_entry;
  	if (!ent)
  		return;
-@@ -162,6 +168,9 @@ void proc_tty_unregister_driver(struct tty_driver *driver)
+@@ -162,6 +168,9 @@ void proc_tty_unregister_driver(struct t
   */
  void __init proc_tty_init(void)
  {
@@ -167,7 +167,7 @@ diff --git a/ipc/sem.c b/ipc/sem.c
 index a39cdc7bf88f..859af9ece817 100644
 --- a/ipc/sem.c
 +++ b/ipc/sem.c
-@@ -268,6 +268,8 @@ void sem_exit_ns(struct ipc_namespace *ns)
+@@ -268,6 +268,8 @@ void sem_exit_ns(struct ipc_namespace *n
  void __init sem_init(void)
  {
  	sem_init_ns(&init_ipc_ns);
@@ -193,7 +193,7 @@ diff --git a/ipc/util.c b/ipc/util.c
 index 05cb9de66735..6a90d425e684 100644
 --- a/ipc/util.c
 +++ b/ipc/util.c
-@@ -141,6 +141,9 @@ void __init ipc_init_proc_interface(const char *path, const char *header,
+@@ -141,6 +141,9 @@ void __init ipc_init_proc_interface(cons
  	struct proc_dir_entry *pde;
  	struct ipc_proc_iface *iface;
  
@@ -207,7 +207,7 @@ diff --git a/kernel/exec_domain.c b/kernel/exec_domain.c
 index 33f07c5f2515..4c226a052bcd 100644
 --- a/kernel/exec_domain.c
 +++ b/kernel/exec_domain.c
-@@ -29,6 +29,8 @@ static int execdomains_proc_show(struct seq_file *m, void *v)
+@@ -29,6 +29,8 @@ static int execdomains_proc_show(struct
  
  static int __init proc_execdomains_init(void)
  {
@@ -220,7 +220,7 @@ diff --git a/kernel/irq/proc.c b/kernel/irq/proc.c
 index 623b8136e9af..e1c8411be10f 100644
 --- a/kernel/irq/proc.c
 +++ b/kernel/irq/proc.c
-@@ -341,6 +341,9 @@ void register_irq_proc(unsigned int irq, struct irq_desc *desc)
+@@ -341,6 +341,9 @@ void register_irq_proc(unsigned int irq,
  	void __maybe_unused *irqp = (void *)(unsigned long) irq;
  	char name [MAX_NAMELEN];
  
@@ -230,7 +230,7 @@ index 623b8136e9af..e1c8411be10f 100644
  	if (!root_irq_dir || (desc->irq_data.chip == &no_irq_chip))
  		return;
  
-@@ -394,6 +397,9 @@ void unregister_irq_proc(unsigned int irq, struct irq_desc *desc)
+@@ -394,6 +397,9 @@ void unregister_irq_proc(unsigned int ir
  {
  	char name [MAX_NAMELEN];
  
@@ -254,7 +254,7 @@ diff --git a/kernel/time/timer_list.c b/kernel/time/timer_list.c
 index ed7d6ad694fb..0c7e4f1e6527 100644
 --- a/kernel/time/timer_list.c
 +++ b/kernel/time/timer_list.c
-@@ -350,6 +350,8 @@ static int __init init_timer_list_procfs(void)
+@@ -350,6 +350,8 @@ static int __init init_timer_list_procfs
  {
  	struct proc_dir_entry *pe;
  
@@ -267,7 +267,7 @@ diff --git a/mm/vmalloc.c b/mm/vmalloc.c
 index a3fedb3ee0db..977972c1cb24 100644
 --- a/mm/vmalloc.c
 +++ b/mm/vmalloc.c
-@@ -4439,6 +4439,8 @@ static const struct seq_operations vmalloc_op = {
+@@ -4456,6 +4456,8 @@ static const struct seq_operations vmall
  
  static int __init proc_vmalloc_init(void)
  {
@@ -280,7 +280,7 @@ diff --git a/mm/vmstat.c b/mm/vmstat.c
 index 00e81e99c6ee..c07d23b266c4 100644
 --- a/mm/vmstat.c
 +++ b/mm/vmstat.c
-@@ -2135,10 +2135,12 @@ void __init init_mm_internals(void)
+@@ -2137,10 +2137,12 @@ void __init init_mm_internals(void)
  	start_shepherd_timer();
  #endif
  #ifdef CONFIG_PROC_FS
@@ -310,7 +310,7 @@ index 7825c129742a..d942e0820a82 100644
  	if (vn->proc_vlan_conf)
  		remove_proc_entry(name_conf, vn->proc_vlan_dir);
  
-@@ -112,6 +115,9 @@ int __net_init vlan_proc_init(struct net *net)
+@@ -112,6 +115,9 @@ int __net_init vlan_proc_init(struct net
  {
  	struct vlan_net *vn = net_generic(net, vlan_net_id);
  
@@ -324,22 +324,25 @@ diff --git a/net/core/net-procfs.c b/net/core/net-procfs.c
 index 09f7ed1a04e8..8a04ccdd8ebf 100644
 --- a/net/core/net-procfs.c
 +++ b/net/core/net-procfs.c
-@@ -327,10 +327,12 @@ static int __net_init dev_proc_net_init(struct net *net)
+@@ -344,11 +344,13 @@ static int __net_init dev_proc_net_init(
  	if (!proc_create_net("dev", 0444, net->proc_net, &dev_seq_ops,
  			sizeof(struct seq_net_private)))
  		goto out;
 -	if (!proc_create_seq("softnet_stat", 0444, net->proc_net,
+-			 &softnet_seq_ops))
 +	if (!IS_ENABLED(CONFIG_PROC_STRIPPED) &&
-+			!proc_create_seq("softnet_stat", 0444, net->proc_net,
- 			 &softnet_seq_ops))
++	    !proc_create_seq("softnet_stat", 0444, net->proc_net,
++			     &softnet_seq_ops))
  		goto out_dev;
 -	if (!proc_create_net("ptype", 0444, net->proc_net, &ptype_seq_ops,
+-			sizeof(struct ptype_iter_state)))
 +	if (!IS_ENABLED(CONFIG_PROC_STRIPPED) &&
-+			!proc_create_net("ptype", 0444, net->proc_net, &ptype_seq_ops,
- 			sizeof(struct seq_net_private)))
++	    !proc_create_net("ptype", 0444, net->proc_net, &ptype_seq_ops,
++			     sizeof(struct ptype_iter_state)))
  		goto out_softnet;
  
-@@ -340,9 +342,11 @@ static int __net_init dev_proc_net_init(struct net *net)
+ 	if (wext_proc_init(net))
+@@ -357,9 +359,11 @@ static int __net_init dev_proc_net_init(
  out:
  	return rc;
  out_ptype:
@@ -353,7 +356,7 @@ index 09f7ed1a04e8..8a04ccdd8ebf 100644
  out_dev:
  	remove_proc_entry("dev", net->proc_net);
  	goto out;
-@@ -352,8 +356,10 @@ static void __net_exit dev_proc_net_exit(struct net *net)
+@@ -369,8 +373,10 @@ static void __net_exit dev_proc_net_exit
  {
  	wext_proc_exit(net);
  
@@ -370,7 +373,7 @@ diff --git a/net/core/sock.c b/net/core/sock.c
 index 93c99a60db8c..ce5a00aa4030 100644
 --- a/net/core/sock.c
 +++ b/net/core/sock.c
-@@ -4132,6 +4132,8 @@ static __net_initdata struct pernet_operations proto_net_ops = {
+@@ -4175,6 +4175,8 @@ static __net_initdata struct pernet_oper
  
  static int __init proto_init(void)
  {
@@ -383,7 +386,7 @@ diff --git a/net/ipv4/fib_trie.c b/net/ipv4/fib_trie.c
 index 3ad383cd7805..aad9fbfa77a4 100644
 --- a/net/ipv4/fib_trie.c
 +++ b/net/ipv4/fib_trie.c
-@@ -3036,11 +3036,13 @@ static const struct seq_operations fib_route_seq_ops = {
+@@ -3016,11 +3016,13 @@ static const struct seq_operations fib_r
  
  int __net_init fib_proc_init(struct net *net)
  {
@@ -399,7 +402,7 @@ index 3ad383cd7805..aad9fbfa77a4 100644
  			fib_triestat_seq_show, NULL))
  		goto out2;
  
-@@ -3051,17 +3053,21 @@ int __net_init fib_proc_init(struct net *net)
+@@ -3031,17 +3033,21 @@ int __net_init fib_proc_init(struct net
  	return 0;
  
  out3:
@@ -429,7 +432,7 @@ diff --git a/net/ipv4/proc.c b/net/ipv4/proc.c
 index eaf1d3113b62..56d18d9c4f82 100644
 --- a/net/ipv4/proc.c
 +++ b/net/ipv4/proc.c
-@@ -556,5 +556,8 @@ static __net_initdata struct pernet_operations ip_proc_ops = {
+@@ -557,5 +557,8 @@ static __net_initdata struct pernet_oper
  
  int __init ip_misc_proc_init(void)
  {
@@ -442,7 +445,7 @@ diff --git a/net/ipv4/route.c b/net/ipv4/route.c
 index b214b5a2e045..e4e0f157fb26 100644
 --- a/net/ipv4/route.c
 +++ b/net/ipv4/route.c
-@@ -380,6 +380,9 @@ static struct pernet_operations ip_rt_proc_ops __net_initdata =  {
+@@ -385,6 +385,9 @@ static struct pernet_operations ip_rt_pr
  
  static int __init ip_rt_proc_init(void)
  {
@@ -452,6 +455,3 @@ index b214b5a2e045..e4e0f157fb26 100644
  	return register_pernet_subsys(&ip_rt_proc_ops);
  }
  
--- 
-2.34.1
-

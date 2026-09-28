@@ -31,10 +31,10 @@ diff --git a/include/linux/if_bridge.h b/include/linux/if_bridge.h
 index c62613c8ea1e..7067cfcce803 100644
 --- a/include/linux/if_bridge.h
 +++ b/include/linux/if_bridge.h
-@@ -79,6 +79,8 @@ extern void br_dev_update_stats(struct net_device *dev,
+@@ -77,6 +77,8 @@ extern void br_dev_update_stats(struct n
  extern struct net_bridge_fdb_entry *br_fdb_has_entry(struct net_device *dev,
- 						     const char *addr,
- 						     __u16 vid);
+ 					     const char *addr,
+ 					     __u16 vid);
 +extern void br_fdb_update_register_notify(struct notifier_block *nb);
 +extern void br_fdb_update_unregister_notify(struct notifier_block *nb);
  
@@ -44,7 +44,7 @@ diff --git a/net/bridge/br_fdb.c b/net/bridge/br_fdb.c
 index 83c8e7b5a89a..4da385256d9c 100644
 --- a/net/bridge/br_fdb.c
 +++ b/net/bridge/br_fdb.c
-@@ -519,6 +519,20 @@ void br_fdb_change_mac_address(struct net_bridge *br, const u8 *newaddr)
+@@ -523,6 +523,20 @@ out:
  	spin_unlock_bh(&br->hash_lock);
  }
  
@@ -65,7 +65,7 @@ index 83c8e7b5a89a..4da385256d9c 100644
  void br_fdb_cleanup(struct work_struct *work)
  {
  	struct net_bridge *br = container_of(work, struct net_bridge,
-@@ -527,6 +541,7 @@ void br_fdb_cleanup(struct work_struct *work)
+@@ -531,6 +545,7 @@ void br_fdb_cleanup(struct work_struct *
  	unsigned long delay = hold_time(br);
  	unsigned long work_delay = delay;
  	unsigned long now = jiffies;
@@ -73,7 +73,7 @@ index 83c8e7b5a89a..4da385256d9c 100644
  
  	/* this part is tricky, in order to avoid blocking learning and
  	 * consequently forwarding, we rely on rcu to delete objects with
-@@ -553,8 +568,12 @@ void br_fdb_cleanup(struct work_struct *work)
+@@ -557,8 +572,12 @@ void br_fdb_cleanup(struct work_struct *
  			work_delay = min(work_delay, this_timer - now);
  		} else {
  			spin_lock_bh(&br->hash_lock);
@@ -88,7 +88,7 @@ index 83c8e7b5a89a..4da385256d9c 100644
  			spin_unlock_bh(&br->hash_lock);
  		}
  	}
-@@ -881,6 +900,7 @@ void br_fdb_update(struct net_bridge *br, struct net_bridge_port *source,
+@@ -891,6 +910,7 @@ void br_fdb_update(struct net_bridge *br
  				br_switchdev_fdb_notify(br, fdb, RTM_DELNEIGH);
  				WRITE_ONCE(fdb->dst, source);
  				fdb_modified = true;
@@ -96,7 +96,7 @@ index 83c8e7b5a89a..4da385256d9c 100644
  				/* Take over HW learned entry */
  				if (unlikely(test_bit(BR_FDB_ADDED_BY_EXT_LEARN,
  						      &fdb->flags)))
-@@ -891,6 +911,10 @@ void br_fdb_update(struct net_bridge *br, struct net_bridge_port *source,
+@@ -901,6 +921,10 @@ void br_fdb_update(struct net_bridge *br
  				 */
  				if (unlikely(test_bit(BR_FDB_LOCKED, &fdb->flags)))
  					clear_bit(BR_FDB_LOCKED, &fdb->flags);
@@ -107,6 +107,3 @@ index 83c8e7b5a89a..4da385256d9c 100644
  			}
  
  			if (unlikely(test_bit(BR_FDB_ADDED_BY_USER, &flags)))
--- 
-2.34.1
-
