@@ -1,0 +1,264 @@
+From f91b5bb701971334253ab88317b8c42c31418743 Mon Sep 17 00:00:00 2001
+From: Devi Priya <devipriy@qti.qualcomm.com>
+Date: Wed, 16 Sep 2026 17:45:31 +0530
+Subject: [PATCH] thermal/drivers/tsens: Fix ipq9650 tsens5/12 calibration
+ parsing
+
+Reconstruct TSENS5 and TSENS12 calibration offsets from the split
+low/high nvmem cells introduced in the DT calibration fuse mapping.
+Additionally, fix an unintended fallthrough from TWO_PT_CALIB to
+ONE_PT_CALIB2 that caused the computed two-point calibration data to
+be discarded, resulting in one-point calibration being used for all
+devices.
+
+Change-Id: I6f204b935e8a8ba662f3dcf58c809b07af687fdf
+Signed-off-by: Devi Priya <devipriy@qti.qualcomm.com>
+---
+ drivers/thermal/qcom/tsens-v2.c | 34 +++++++++++++--------
+ drivers/thermal/qcom/tsens.c    | 53 +++++++++++++++++++++++++++++++++
+ drivers/thermal/qcom/tsens.h    | 26 ++++++++++++++++
+ 3 files changed, 101 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/thermal/qcom/tsens-v2.c b/drivers/thermal/qcom/tsens-v2.c
+index 1e655559af08..1a6aec552d26 100644
+--- a/drivers/thermal/qcom/tsens-v2.c
++++ b/drivers/thermal/qcom/tsens-v2.c
+@@ -149,25 +149,23 @@ static const struct reg_field tsens_v2_regfields[MAX_REGFIELDS] = {
+ 	[TRDY] = REG_FIELD(TM_TRDY_OFF, 0, 0),
+ };
+ 
+-static int tsens_v2_calibrate_sensor(struct device *dev, struct tsens_sensor *sensor,
++static int tsens_v2_calibrate_sensor(struct tsens_priv *priv, struct tsens_sensor *sensor,
+ 				     struct regmap *map,  u32 mode, u32 base0, u32 base1)
+ {
+ 	u32 slope, czero, val;
+-	char name[15];
+ 	int ret;
+ 
+-	/* Read offset value */
+-	ret = snprintf(name, sizeof(name), "s%d", sensor->hw_id);
+-	if (ret < 0)
+-		return ret;
+-
+-	ret = nvmem_cell_read_variable_le_u32(dev, name, &sensor->offset);
++	ret = tsens_read_sensor_offset(priv, sensor);
+ 	if (ret)
+ 		return ret;
+ 
+ 	/* Based on calib mode, program SHIFT, SLOPE and CZERO */
+ 	switch (mode) {
+ 	case TWO_PT_CALIB:
++		if (base1 == base0) {
++			dev_err(priv->dev, "TWO_PT_CALIB:invalid calib data\n");
++			return -EINVAL;
++		}
+ 		slope = (TWO_PT_SHIFTED_GAIN / (base1 - base0));
+ 
+ 		czero = (base0 + sensor->offset - ((base1 - base0) / 3));
+@@ -175,7 +173,7 @@ static int tsens_v2_calibrate_sensor(struct device *dev, struct tsens_sensor *se
+ 		val = (V2_SHIFT_DEFAULT << CONVERSION_SHIFT_SHIFT) |
+ 		      (slope << CONVERSION_SLOPE_SHIFT) | czero;
+ 
+-		fallthrough;
++		break;
+ 	case ONE_PT_CALIB2:
+ 		czero = base0 + sensor->offset - ONE_PT_CZERO_CONST;
+ 
+@@ -184,7 +182,7 @@ static int tsens_v2_calibrate_sensor(struct device *dev, struct tsens_sensor *se
+ 
+ 		break;
+ 	default:
+-		dev_dbg(dev, "calibrationless mode\n");
++		dev_dbg(priv->dev, "calibrationless mode\n");
+ 
+ 		val = (V2_SHIFT_DEFAULT << CONVERSION_SHIFT_SHIFT) |
+ 		      (V2_SLOPE_DEFAULT << CONVERSION_SLOPE_SHIFT) | V2_CZERO_DEFAULT;
+@@ -197,7 +195,6 @@ static int tsens_v2_calibrate_sensor(struct device *dev, struct tsens_sensor *se
+ 
+ static int tsens_v2_calibration(struct tsens_priv *priv)
+ {
+-	struct device *dev = priv->dev;
+ 	u32 mode, base0, base1;
+ 	int i, ret;
+ 
+@@ -222,7 +219,7 @@ static int tsens_v2_calibration(struct tsens_priv *priv)
+ 
+ 	/* Calibrate each sensor */
+ 	for (i = 0; i < priv->num_sensors; i++) {
+-		ret = tsens_v2_calibrate_sensor(dev, &priv->sensor[i], priv->srot_map, mode, base0, base1);
++		ret = tsens_v2_calibrate_sensor(priv, &priv->sensor[i], priv->srot_map, mode, base0, base1);
+ 		if (ret < 0)
+ 			return ret;
+ 	}
+@@ -323,12 +320,25 @@ struct tsens_plat_data data_ipq5424 = {
+ 	.fields		= tsens_v2_regfields,
+ };
+ 
++/*
++ * On IPQ9650, TSENS5 and TSENS12 have their calibration fuse offset split
++ * across two non-contiguous QFPROM registers; the DT models each as two
++ * cells ("s<hw_id>_low"/"s<hw_id>_high") which tsens_read_sensor_offset()
++ * recombines as (high << low_shift) | low.
++ */
++static const struct tsens_split_offset tsens_ipq9650_split_offsets[] = {
++	{ 5, 2 },
++	{ 12, 4 },
++};
++
+ struct tsens_plat_data data_ipq9650 = {
+ 	.num_sensors	= 11,
+ 	.ops		= &ops_ipq5332,
+ 	.hw_ids		= (unsigned int []){5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+ 	.feat		= &ipq9650_feat,
+ 	.fields		= tsens_v2_regfields,
++	.split_offsets		= tsens_ipq9650_split_offsets,
++	.num_split_offsets	= ARRAY_SIZE(tsens_ipq9650_split_offsets),
+ };
+ 
+ /* Kept around for backward compatibility with old msm8996.dtsi */
+diff --git a/drivers/thermal/qcom/tsens.c b/drivers/thermal/qcom/tsens.c
+index ed0c3f21c863..3d3664fbbee1 100644
+--- a/drivers/thermal/qcom/tsens.c
++++ b/drivers/thermal/qcom/tsens.c
+@@ -178,6 +178,57 @@ int tsens_read_calibration(struct tsens_priv *priv, int shift, u32 *p1, u32 *p2,
+ 	return mode;
+ }
+ 
++/*
++ * Read a sensor's calibration fuse offset, transparently combining it from
++ * two nvmem cells ("s<hw_id>_low"/"s<hw_id>_high") when the platform's
++ * tsens_plat_data lists it in priv->split_offsets.
++ */
++int tsens_read_sensor_offset(struct tsens_priv *priv, struct tsens_sensor *sensor)
++{
++	const struct tsens_split_offset *split = NULL;
++	char name[16];
++	u32 low, high;
++	int i, ret;
++
++	if (priv->num_split_offsets && !priv->split_offsets)
++		return -EINVAL;
++
++	for (i = 0; i < priv->num_split_offsets; i++) {
++		if (priv->split_offsets[i].hw_id == sensor->hw_id) {
++			split = &priv->split_offsets[i];
++			break;
++		}
++	}
++
++	if (!split) {
++		ret = snprintf(name, sizeof(name), "s%d", sensor->hw_id);
++		if (ret < 0 || ret >= sizeof(name))
++			return -EINVAL;
++
++		return nvmem_cell_read_variable_le_u32(priv->dev, name, &sensor->offset);
++	}
++
++	ret = snprintf(name, sizeof(name), "s%d_low", split->hw_id);
++	if (ret < 0 || ret >= sizeof(name))
++		return -EINVAL;
++
++	ret = nvmem_cell_read_variable_le_u32(priv->dev, name, &low);
++	if (ret)
++		return ret;
++
++	ret = snprintf(name, sizeof(name), "s%d_high", split->hw_id);
++	if (ret < 0 || ret >= sizeof(name))
++		return -EINVAL;
++
++	ret = nvmem_cell_read_variable_le_u32(priv->dev, name, &high);
++	if (ret)
++		return ret;
++
++	sensor->offset = (high << split->low_shift) | low;
++
++	return 0;
++}
++
+ int tsens_calibrate_nvmem(struct tsens_priv *priv, int shift)
+ {
+ 	u32 p1[MAX_SENSORS], p2[MAX_SENSORS];
+@@ -1623,6 +1674,8 @@ static int tsens_probe(struct platform_device *pdev)
+ 	}
+ 	priv->feat = data->feat;
+ 	priv->fields = data->fields;
++	priv->split_offsets = data->split_offsets;
++	priv->num_split_offsets = data->num_split_offsets;
+ 
+ 	platform_set_drvdata(pdev, priv);
+ 
+diff --git a/drivers/thermal/qcom/tsens.h b/drivers/thermal/qcom/tsens.h
+index 6bd76b077771..6321257f937d 100644
+--- a/drivers/thermal/qcom/tsens.h
++++ b/drivers/thermal/qcom/tsens.h
+@@ -548,6 +548,9 @@ struct tsens_features {
+  * @hw_ids: Subset of sensors ids supported by platform, if not the first n
+  * @feat: features of the IP
+  * @fields: bitfield locations
++ * @split_offsets: sensors on this platform whose calibration fuse offset
++ *                 is split across two nvmem cells, or NULL if none are
++ * @num_split_offsets: number of entries in @split_offsets
+  */
+ struct tsens_plat_data {
+ 	const u32		num_sensors;
+@@ -555,6 +558,8 @@ struct tsens_plat_data {
+ 	unsigned int		*hw_ids;
+ 	struct tsens_features	*feat;
+ 	const struct reg_field		*fields;
++	const struct tsens_split_offset	*split_offsets;
++	u8				num_split_offsets;
+ };
+ 
+ /**
+@@ -567,6 +572,21 @@ struct tsens_context {
+ 	int	control;
+ };
+ 
++/**
++ * struct tsens_split_offset - describes a sensor whose calibration fuse
++ *                              offset is split across two non-contiguous
++ *                              nvmem cells ("<hw_id>_low"/"<hw_id>_high")
++ * @hw_id: hardware sensor id this split applies to
++ * @low_shift: bit-width of the "_low" cell; the "_high" cell is shifted
++ *             left by this amount before being OR'd with "_low"
++ *
++ * Set at compile time via struct tsens_plat_data, on platforms that need it.
++ */
++struct tsens_split_offset {
++	unsigned int	hw_id;
++	u8		low_shift;
++};
++
+ /**
+  * struct tsens_priv - private data for each instance of the tsens IP
+  * @dev: pointer to struct device
+@@ -581,6 +601,8 @@ struct tsens_context {
+  * @ctx: registers to be saved and restored during suspend/resume
+  * @feat: features of the IP
+  * @fields: bitfield locations
++ * @split_offsets: sensors with a split calibration fuse offset, from DT
++ * @num_split_offsets: number of entries in @split_offsets
+  * @ops: pointer to list of callbacks supported by this device
+  * @debug_root: pointer to debugfs dentry for all tsens
+  * @debug: pointer to debugfs dentry for tsens controller
+@@ -603,6 +625,9 @@ struct tsens_priv {
+ 	const struct reg_field		*fields;
+ 	const struct tsens_ops		*ops;
+ 
++	const struct tsens_split_offset	*split_offsets;
++	u8				num_split_offsets;
++
+ 	struct dentry			*debug_root;
+ 	struct dentry			*debug;
+ 
+@@ -651,6 +676,7 @@ int tsens_read_calibration_legacy(struct tsens_priv *priv,
+ 				  u32 *p1, u32 *p2,
+ 				  u32 *cdata, u32 *csel);
+ int tsens_read_calibration(struct tsens_priv *priv, int shift, u32 *p1, u32 *p2, bool backup);
++int tsens_read_sensor_offset(struct tsens_priv *priv, struct tsens_sensor *sensor);
+ int tsens_calibrate_nvmem(struct tsens_priv *priv, int shift);
+ int tsens_calibrate_common(struct tsens_priv *priv);
+ void compute_intercept_slope(struct tsens_priv *priv, u32 *pt1, u32 *pt2, u32 mode);
+-- 
+2.34.1
+
