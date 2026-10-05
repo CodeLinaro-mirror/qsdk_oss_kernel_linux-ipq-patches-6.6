@@ -10,11 +10,11 @@ Signed-off-by: zhongjia <quic_zhongjia@quicinc.com>
  drivers/net/phy/aquantia_main.c | 19 +++++++++++++++++--
  1 file changed, 17 insertions(+), 2 deletions(-)
 
-diff --git a/drivers/net/phy/aquantia_main.c b/drivers/net/phy/aquantia_main.c
+diff --git a/drivers/net/phy/aquantia/aquantia_main.c b/drivers/net/phy/aquantia/aquantia_main.c
 index a9b3ea992afa..99ded6de45ae 100755
---- a/drivers/net/phy/aquantia_main.c
-+++ b/drivers/net/phy/aquantia_main.c
-@@ -83,6 +83,8 @@
+--- a/drivers/net/phy/aquantia/aquantia_main.c
++++ b/drivers/net/phy/aquantia/aquantia_main.c
+@@ -80,6 +80,8 @@
  #define MDIO_AN_RX_LP_STAT1_1000BASET_HALF	BIT(14)
  #define MDIO_AN_RX_LP_STAT1_SHORT_REACH		BIT(13)
  #define MDIO_AN_RX_LP_STAT1_AQRATE_DOWNSHIFT	BIT(12)
@@ -23,7 +23,7 @@ index a9b3ea992afa..99ded6de45ae 100755
  #define MDIO_AN_RX_LP_STAT1_AQ_PHY		BIT(2)
  
  #define MDIO_AN_RX_LP_STAT4			0xe823
-@@ -437,7 +439,7 @@ static irqreturn_t aqr_handle_interrupt(struct phy_device *phydev)
+@@ -434,7 +436,7 @@ static irqreturn_t aqr_handle_interrupt(
  
  static int aqr_read_status(struct phy_device *phydev)
  {
@@ -32,7 +32,7 @@ index a9b3ea992afa..99ded6de45ae 100755
  
  	if (phydev->autoneg == AUTONEG_ENABLE) {
  		val = phy_read_mmd(phydev, MDIO_MMD_AN, MDIO_AN_RX_LP_STAT1);
-@@ -452,7 +454,20 @@ static int aqr_read_status(struct phy_device *phydev)
+@@ -449,7 +451,20 @@ static int aqr_read_status(struct phy_de
  				 val & MDIO_AN_RX_LP_STAT1_1000BASET_HALF);
  	}
  
@@ -54,6 +54,3 @@ index a9b3ea992afa..99ded6de45ae 100755
  }
  
  static int aqr107_read_rate(struct phy_device *phydev)
--- 
-2.34.1
-

@@ -16,47 +16,16 @@ diff --git a/drivers/net/bonding/bond_main.c b/drivers/net/bonding/bond_main.c
 index 1888a068887a..4aa624e1bf3f 100644
 --- a/drivers/net/bonding/bond_main.c
 +++ b/drivers/net/bonding/bond_main.c
-@@ -1446,6 +1446,10 @@ static netdev_features_t bond_fix_features(struct net_device *dev,
+@@ -1493,6 +1493,8 @@ static netdev_features_t bond_fix_featur
+ 						     mask);
+ 	}
+ 	features = netdev_add_tso_features(features, mask);
++	if (BOND_MODE(bond) == BOND_MODE_MLO)
++		features &= ~NETIF_F_HW_CSUM;
+ 
  	return features;
  }
- 
-+#define BOND_MLO_VLAN_FEATURES	(NETIF_F_SG | \
-+				 NETIF_F_FRAGLIST | \
-+				 NETIF_F_HIGHDMA | NETIF_F_LRO)
-+
- #define BOND_VLAN_FEATURES	(NETIF_F_HW_CSUM | NETIF_F_SG | \
- 				 NETIF_F_FRAGLIST | NETIF_F_GSO_SOFTWARE | \
- 				 NETIF_F_HIGHDMA | NETIF_F_LRO)
-@@ -1476,13 +1480,25 @@ static void bond_compute_features(struct bonding *bond)
- 
- 	if (!bond_has_slaves(bond))
- 		goto done;
-+
-+	/*
-+	 * Use features specific to bond MLO
-+	 */
-+	if (BOND_MODE(bond) == BOND_MODE_MLO) {
-+		vlan_features = BOND_MLO_VLAN_FEATURES;
-+	}
-+
- 	vlan_features &= NETIF_F_ALL_FOR_ALL;
- 	mpls_features &= NETIF_F_ALL_FOR_ALL;
- 
- 	bond_for_each_slave(bond, slave, iter) {
--		vlan_features = netdev_increment_features(vlan_features,
--			slave->dev->vlan_features, BOND_VLAN_FEATURES);
--
-+		if (BOND_MODE(bond) == BOND_MODE_MLO) {
-+			vlan_features = netdev_increment_features(vlan_features,
-+				slave->dev->vlan_features, BOND_MLO_VLAN_FEATURES);
-+		} else {
-+			vlan_features = netdev_increment_features(vlan_features,
-+				slave->dev->vlan_features, BOND_VLAN_FEATURES);
-+		}
- 		enc_features = netdev_increment_features(enc_features,
- 							 slave->dev->hw_enc_features,
- 							 BOND_ENC_FEATURES);
-@@ -6849,6 +6865,12 @@ struct net_device *bond_create_mlo(struct net *net, const char *name, struct mlo
+@@ -6970,6 +6972,12 @@ struct net_device *bond_create_mlo(struc
  	memcpy((void *)&bond->mlo_info, (void *)mlo_info, sizeof(*mlo_info));
  	eth_hw_addr_random(bond_dev);
  
@@ -69,6 +38,3 @@ index 1888a068887a..4aa624e1bf3f 100644
  	res = register_netdevice(bond_dev);
  	if (res < 0) {
  		free_netdev(bond_dev);
--- 
-2.34.1
-

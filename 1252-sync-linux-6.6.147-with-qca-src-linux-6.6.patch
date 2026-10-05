@@ -1,0 +1,849 @@
+diff --git a/drivers/misc/fastrpc.c b/drivers/misc/fastrpc.c
+--- a/drivers/misc/fastrpc.c
++++ b/drivers/misc/fastrpc.c
+@@ -539,7 +539,8 @@ static void fastrpc_user_free(struct kre
+ 	struct fastrpc_map *map, *m;
+ 	struct fastrpc_buf *buf, *b;
+ 
+-	fastrpc_buf_free(fl->init_mem);
++	if (fl->init_mem)
++		fastrpc_buf_free(fl->init_mem);
+ 
+ 	list_for_each_entry_safe(ctx, n, &fl->pending, node) {
+ 		list_del(&ctx->node);
+@@ -2782,9 +2783,6 @@ static int fastrpc_rpmsg_callback(struct
+ 	if (len < sizeof(*rsp))
+ 		return -EINVAL;
+ 
+-	if (!cctx)
+-		return -ENODEV;
+-
+ 	/*
+ 	 * A PD exit notification from the DSP PD notification framework carries
+ 	 * this sentinel rather than a real context. Drop it: a real context is
+@@ -2793,6 +2791,9 @@ static int fastrpc_rpmsg_callback(struct
+ 	if (rsp->ctx == FASTRPC_DSP_PD_NOTIFY_CTX)
+ 		return 0;
+ 
++	if (!cctx)
++		return -ENODEV;
++
+ 	idr = FIELD_GET(FASTRPC_CTXID_MASK, rsp->ctx);
+ 	ctxid = rsp->ctx & (FASTRPC_CTXID_MASK | FASTRPC_JOBID_MASK);
+ 
+@@ -2807,7 +2808,7 @@ static int fastrpc_rpmsg_callback(struct
+ 	if (ctx->ctxid != ctxid) {
+ 		spin_unlock_irqrestore(&cctx->lock, flags);
+ 		dev_dbg(&rpdev->dev, "Warning: rsp ctxid 0x%lx mismatch with local ctxid 0x%llx (full rsp ctx 0x%llx)\n",
+-			ctxid, ctx->ctxid, rsp->ctx);
++				ctxid, ctx->ctxid, rsp->ctx);
+ 		return 0;
+ 	}
+ 	spin_unlock_irqrestore(&cctx->lock, flags);
+diff --git a/drivers/net/bonding/bond_3ad.c b/drivers/net/bonding/bond_3ad.c
+--- a/drivers/net/bonding/bond_3ad.c
++++ b/drivers/net/bonding/bond_3ad.c
+@@ -2078,6 +2078,7 @@ static void ad_initialize_port(struct po
+ static void ad_enable_collecting(struct port *port)
+ {
+ 	struct aggregator *aggregator = rcu_dereference(port->aggregator);
++
+ 	if (aggregator->is_active) {
+ 		struct slave *slave = port->slave;
+ 
+@@ -2097,6 +2098,7 @@ static void ad_enable_collecting(struct
+ static void ad_disable_distributing(struct port *port, bool *update_slave_arr)
+ {
+ 	struct aggregator *aggregator = rcu_dereference(port->aggregator);
++
+ 	if (aggregator && __agg_has_partner(aggregator)) {
+ 		slave_dbg(port->slave->bond->dev, port->slave->dev,
+ 			  "Disabling distributing on port %d (LAG %d)\n",
+@@ -2119,9 +2121,10 @@ static void ad_enable_collecting_distrib
+ 					      bool *update_slave_arr)
+ {
+ 	struct aggregator *aggregator = rcu_dereference(port->aggregator);
+-	struct bond_cb *lag_cb_main;
+ 
+ 	if (aggregator->is_active) {
++		struct bond_cb *lag_cb_main;
++
+ 		slave_dbg(port->slave->bond->dev, port->slave->dev,
+ 			  "Enabling port %d (LAG %d)\n",
+ 			  port->actor_port_number,
+@@ -2149,6 +2152,7 @@ static void ad_disable_collecting_distri
+ 					       bool *update_slave_arr)
+ {
+ 	struct aggregator *aggregator = rcu_dereference(port->aggregator);
++
+ 	if (aggregator && __agg_has_partner(aggregator)) {
+ 		slave_dbg(port->slave->bond->dev, port->slave->dev,
+ 			  "Disabling port %d (LAG %d)\n",
+diff --git a/drivers/net/bonding/bond_main.c b/drivers/net/bonding/bond_main.c
+--- a/drivers/net/bonding/bond_main.c
++++ b/drivers/net/bonding/bond_main.c
+@@ -1493,12 +1493,114 @@ static netdev_features_t bond_fix_featur
+ 						     mask);
+ 	}
+ 	features = netdev_add_tso_features(features, mask);
+-	if (BOND_MODE(bond) == BOND_MODE_MLO)
+-		features &= ~NETIF_F_HW_CSUM;
+ 
+ 	return features;
+ }
+ 
++#define BOND_MLO_VLAN_FEATURES	(NETIF_F_SG | \
++				 NETIF_F_FRAGLIST | \
++				 NETIF_F_HIGHDMA | NETIF_F_LRO)
++
++#define BOND_VLAN_FEATURES	(NETIF_F_HW_CSUM | NETIF_F_SG | \
++				 NETIF_F_FRAGLIST | NETIF_F_GSO_SOFTWARE | \
++				 NETIF_F_GSO_ENCAP_ALL | \
++				 NETIF_F_HIGHDMA | NETIF_F_LRO)
++
++#define BOND_ENC_FEATURES	(NETIF_F_HW_CSUM | NETIF_F_SG | \
++				 NETIF_F_RXCSUM | NETIF_F_GSO_SOFTWARE)
++
++#define BOND_MPLS_FEATURES	(NETIF_F_HW_CSUM | NETIF_F_SG | \
++				 NETIF_F_GSO_SOFTWARE)
++
++#define BOND_GSO_PARTIAL_FEATURES (NETIF_F_GSO_ESP)
++
++static void bond_compute_features(struct bonding *bond)
++{
++	unsigned int dst_release_flag = IFF_XMIT_DST_RELEASE |
++					IFF_XMIT_DST_RELEASE_PERM;
++	netdev_features_t vlan_features = BOND_VLAN_FEATURES;
++	netdev_features_t enc_features  = BOND_ENC_FEATURES;
++#ifdef CONFIG_XFRM_OFFLOAD
++	netdev_features_t xfrm_features  = BOND_XFRM_FEATURES;
++#endif /* CONFIG_XFRM_OFFLOAD */
++	netdev_features_t mpls_features  = BOND_MPLS_FEATURES;
++	netdev_features_t gso_partial_features = BOND_GSO_PARTIAL_FEATURES;
++	struct net_device *bond_dev = bond->dev;
++	struct list_head *iter;
++	struct slave *slave;
++	unsigned short max_hard_header_len = ETH_HLEN;
++	unsigned int tso_max_size = TSO_MAX_SIZE;
++	u16 tso_max_segs = TSO_MAX_SEGS;
++
++	if (!bond_has_slaves(bond))
++		goto done;
++
++	/*
++	 * Use features specific to bond MLO
++	 */
++	if (BOND_MODE(bond) == BOND_MODE_MLO) {
++		vlan_features = BOND_MLO_VLAN_FEATURES;
++	}
++
++	vlan_features = netdev_base_features(vlan_features);
++	mpls_features = netdev_base_features(mpls_features);
++
++	bond_for_each_slave(bond, slave, iter) {
++		if (BOND_MODE(bond) == BOND_MODE_MLO) {
++			vlan_features = netdev_increment_features(vlan_features,
++				slave->dev->vlan_features, BOND_MLO_VLAN_FEATURES);
++		} else {
++			vlan_features = netdev_increment_features(vlan_features,
++				slave->dev->vlan_features, BOND_VLAN_FEATURES);
++		}
++		enc_features = netdev_increment_features(enc_features,
++							 slave->dev->hw_enc_features,
++							 BOND_ENC_FEATURES);
++
++		gso_partial_features = netdev_increment_features(gso_partial_features,
++								  slave->dev->gso_partial_features,
++								  BOND_GSO_PARTIAL_FEATURES);
++
++#ifdef CONFIG_XFRM_OFFLOAD
++		xfrm_features = netdev_increment_features(xfrm_features,
++							  slave->dev->hw_enc_features,
++							  BOND_XFRM_FEATURES);
++#endif /* CONFIG_XFRM_OFFLOAD */
++
++		mpls_features = netdev_increment_features(mpls_features,
++							  slave->dev->mpls_features,
++							  BOND_MPLS_FEATURES);
++
++		dst_release_flag &= slave->dev->priv_flags;
++		if (slave->dev->hard_header_len > max_hard_header_len)
++			max_hard_header_len = slave->dev->hard_header_len;
++
++		tso_max_size = min(tso_max_size, slave->dev->tso_max_size);
++		tso_max_segs = min(tso_max_segs, slave->dev->tso_max_segs);
++	}
++	bond_dev->hard_header_len = max_hard_header_len;
++
++done:
++	bond_dev->vlan_features = vlan_features;
++	bond_dev->hw_enc_features = enc_features | NETIF_F_GSO_ENCAP_ALL |
++				    NETIF_F_HW_VLAN_CTAG_TX |
++				    NETIF_F_HW_VLAN_STAG_TX;
++#ifdef CONFIG_XFRM_OFFLOAD
++	bond_dev->hw_enc_features |= xfrm_features;
++#endif /* CONFIG_XFRM_OFFLOAD */
++	bond_dev->mpls_features = mpls_features;
++	bond_dev->gso_partial_features = gso_partial_features;
++	netif_set_tso_max_segs(bond_dev, tso_max_segs);
++	netif_set_tso_max_size(bond_dev, tso_max_size);
++
++	bond_dev->priv_flags &= ~IFF_XMIT_DST_RELEASE;
++	if ((bond_dev->priv_flags & IFF_XMIT_DST_RELEASE_PERM) &&
++	    dst_release_flag == (IFF_XMIT_DST_RELEASE | IFF_XMIT_DST_RELEASE_PERM))
++		bond_dev->priv_flags |= IFF_XMIT_DST_RELEASE;
++
++	netdev_change_features(bond_dev);
++}
++
+ static int bond_header_create(struct sk_buff *skb, struct net_device *bond_dev,
+ 			      unsigned short type, const void *daddr,
+ 			      const void *saddr, unsigned int len)
+@@ -1895,14 +1997,14 @@ int bond_enslave(struct net_device *bond
+ 	int link_reporting;
+ 	int res = 0, i;
+ 
++	ASSERT_RTNL();
++
+ 	if (slave_dev->type == ARPHRD_CAN) {
+ 		BOND_NL_ERR(bond_dev, extack,
+ 			    "CAN devices cannot be enslaved");
+ 		return -EPERM;
+ 	}
+ 
+-	ASSERT_RTNL();
+-
+ 	if (slave_dev->flags & IFF_MASTER &&
+ 	    !netif_is_bond_master(slave_dev)) {
+ 		BOND_NL_ERR(bond_dev, extack,
+@@ -2318,7 +2420,7 @@ skip_mac_set:
+ 	}
+ 
+ 	bond->slave_cnt++;
+-	netdev_compute_master_upper_features(bond->dev, true);
++	bond_compute_features(bond);
+ 	bond_set_carrier(bond);
+ 
+ 	/* Needs to be called before bond_select_active_slave(), which will
+@@ -2603,7 +2705,7 @@ static int __bond_release_one(struct net
+ 		call_netdevice_notifiers(NETDEV_RELEASE, bond->dev);
+ 	}
+ 
+-	netdev_compute_master_upper_features(bond->dev, true);
++	bond_compute_features(bond);
+ 	if (!(bond_dev->features & NETIF_F_VLAN_CHALLENGED) &&
+ 	    (old_features & NETIF_F_VLAN_CHALLENGED))
+ 		slave_info(bond_dev, slave_dev, "last VLAN challenged slave left bond - VLAN blocking is removed\n");
+@@ -4141,7 +4243,7 @@ static int bond_slave_netdev_event(unsig
+ 	case NETDEV_FEAT_CHANGE:
+ 		if (!bond->notifier_ctx) {
+ 			bond->notifier_ctx = true;
+-			netdev_compute_master_upper_features(bond->dev, true);
++			bond_compute_features(bond);
+ 			bond->notifier_ctx = false;
+ 		}
+ 		break;
+@@ -6430,7 +6532,7 @@ void bond_setup(struct net_device *bond_
+ 	/* Don't allow bond devices to change network namespaces. */
+ 	bond_dev->features |= NETIF_F_NETNS_LOCAL;
+ 
+-	bond_dev->hw_features = MASTER_UPPER_DEV_VLAN_FEATURES |
++	bond_dev->hw_features = BOND_VLAN_FEATURES |
+ 				NETIF_F_HW_VLAN_CTAG_RX |
+ 				NETIF_F_HW_VLAN_CTAG_FILTER |
+ 				NETIF_F_HW_VLAN_STAG_RX |
+diff --git a/drivers/net/phy/aquantia/aquantia_main.c b/drivers/net/phy/aquantia/aquantia_main.c
+--- a/drivers/net/phy/aquantia/aquantia_main.c
++++ b/drivers/net/phy/aquantia/aquantia_main.c
+@@ -25,10 +25,12 @@
+ #define PHY_ID_AQR112	0x03a1b662
+ #define PHY_ID_AQR412	0x03a1b712
+ #define PHY_ID_AQR113C	0x31c31c12
+-#define PHY_ID_AQR813	0x31c31cb2
++#define PHY_ID_AQR813   0x31c31cb2
++#define PHY_ID_AQR112	0x03a1b662
++#define PHY_ID_AQR412	0x03a1b712
+ #define PHY_ID_AQR113	0x31c31c40
+-#define PHY_ID_AQR112C	0x03a1b790
+-#define PHY_ID_AQR112R	0x31c31d12
++#define PHY_ID_AQR112C  0x03a1b790
++#define PHY_ID_AQR112R  0x31c31d12
+ #define PHY_ID_AQR108	0x03a1b4f2
+ #define PHY_ID_AQR109	0x03a1b502
+ #define PHY_ID_AQR111	0x03a1b610
+@@ -45,6 +47,7 @@
+ #define MDIO_PHYXS_VEND_IF_STATUS_TYPE_SGMII	6
+ #define MDIO_PHYXS_VEND_IF_STATUS_TYPE_RXAUI	7
+ #define MDIO_PHYXS_VEND_IF_STATUS_TYPE_OCSGMII	10
++
+ #define MDIO_PHYXS_VEND_USX_AUTONEG_STATUS	0xc441
+ #define MDIO_PHYXS_VEND_USX_AUTONEG_STATUS_ENABLE	BIT(3)
+ 
+@@ -174,10 +177,10 @@
+  */
+ #define AQUANTIA_VND1_GSTART_RATE		0x31a
+ #define  AQUANTIA_VND1_GSTART_RATE_OFF		0
+-#define  AQUANTIA_VND1_GSTART_RATE_100M	1
++#define  AQUANTIA_VND1_GSTART_RATE_100M		1
+ #define  AQUANTIA_VND1_GSTART_RATE_1G		2
+ #define  AQUANTIA_VND1_GSTART_RATE_10G		3
+-#define  AQUANTIA_VND1_GSTART_RATE_2_5G	4
++#define  AQUANTIA_VND1_GSTART_RATE_2_5G		4
+ #define  AQUANTIA_VND1_GSTART_RATE_5G		5
+ 
+ /* SYSCFG registers for 100M, 1G, 2.5G, 5G, 10G */
+@@ -273,9 +276,9 @@ static void aqr107_get_stats(struct phy_
+ static int aqr107_autoneg_ctrl_init(struct phy_device *phydev)
+ {
+ 	return phy_modify_mmd(phydev, MDIO_MMD_PHYXS,
+-			      MDIO_PHYXS_VEND_USX_AUTONEG_STATUS,
+-			      MDIO_PHYXS_VEND_USX_AUTONEG_STATUS_ENABLE,
+-			      MDIO_PHYXS_VEND_USX_AUTONEG_STATUS_ENABLE);
++		MDIO_PHYXS_VEND_USX_AUTONEG_STATUS,
++		MDIO_PHYXS_VEND_USX_AUTONEG_STATUS_ENABLE,
++		MDIO_PHYXS_VEND_USX_AUTONEG_STATUS_ENABLE);
+ }
+ 
+ static int aqr_config_aneg(struct phy_device *phydev)
+@@ -332,14 +335,14 @@ static struct {
+ 	int cnt;
+ 	u16 start_rate;
+ } aquantia_syscfg[PHY_INTERFACE_MODE_MAX] = {
+-	[PHY_INTERFACE_MODE_SGMII] = {0x04b, AQUANTIA_VND1_GSYSCFG_1G,
++	[PHY_INTERFACE_MODE_SGMII] =      {0x04b, AQUANTIA_VND1_GSYSCFG_1G,
+ 					   AQUANTIA_VND1_GSTART_RATE_1G},
+ 	[PHY_INTERFACE_MODE_2500BASEX] = {0x144, AQUANTIA_VND1_GSYSCFG_2_5G,
+-					      AQUANTIA_VND1_GSTART_RATE_2_5G},
+-	[PHY_INTERFACE_MODE_XGMII] = {0x100, AQUANTIA_VND1_GSYSCFG_10G,
++					   AQUANTIA_VND1_GSTART_RATE_2_5G},
++	[PHY_INTERFACE_MODE_XGMII] =      {0x100, AQUANTIA_VND1_GSYSCFG_10G,
++					   AQUANTIA_VND1_GSTART_RATE_10G},
++	[PHY_INTERFACE_MODE_USXGMII] =    {0x080, AQUANTIA_VND1_GSYSCFG_10G,
+ 					   AQUANTIA_VND1_GSTART_RATE_10G},
+-	[PHY_INTERFACE_MODE_USXGMII] = {0x080, AQUANTIA_VND1_GSYSCFG_10G,
+-					     AQUANTIA_VND1_GSTART_RATE_10G},
+ };
+ 
+ /* Sets up protocol on system side before calling aqr_config_aneg */
+@@ -525,6 +528,49 @@ static int aqr107_read_rate(struct phy_d
+ 	return 0;
+ }
+ 
++static int aqr113c_read_status(struct phy_device *phydev)
++{
++	int val, ret;
++
++	ret = aqr_read_status(phydev);
++	if (ret)
++		return ret;
++
++	if (!phydev->link || phydev->autoneg == AUTONEG_DISABLE)
++		return 0;
++
++	// On AQR113C, the speed returned by aqr_read_status is wrong
++	aqr107_read_rate(phydev);
++
++	val = phy_read_mmd(phydev, MDIO_MMD_PHYXS, MDIO_PHYXS_VEND_IF_STATUS);
++	if (val < 0)
++		return val;
++
++	switch (FIELD_GET(MDIO_PHYXS_VEND_IF_STATUS_TYPE_MASK, val)) {
++	case MDIO_PHYXS_VEND_IF_STATUS_TYPE_KR:
++		phydev->interface = PHY_INTERFACE_MODE_10GKR;
++		break;
++	case MDIO_PHYXS_VEND_IF_STATUS_TYPE_XFI:
++		phydev->interface = PHY_INTERFACE_MODE_10GBASER;
++		break;
++	case MDIO_PHYXS_VEND_IF_STATUS_TYPE_USXGMII:
++		phydev->interface = PHY_INTERFACE_MODE_USXGMII;
++		break;
++	case MDIO_PHYXS_VEND_IF_STATUS_TYPE_SGMII:
++		phydev->interface = PHY_INTERFACE_MODE_SGMII;
++		break;
++	case MDIO_PHYXS_VEND_IF_STATUS_TYPE_OCSGMII:
++		phydev->interface = PHY_INTERFACE_MODE_2500BASEX;
++		break;
++default:
++		phydev->interface = PHY_INTERFACE_MODE_NA;
++		break;
++	}
++
++	/* Read downshifted rate from vendor register */
++	return aqr107_read_rate(phydev);
++}
++
+ static int aqr107_read_status(struct phy_device *phydev)
+ {
+ 	int val, ret;
+@@ -957,7 +1003,7 @@ static struct phy_driver aqr_driver[] =
+ 	.config_aneg    = aqr_config_aneg,
+ 	.config_intr    = aqr_config_intr,
+ 	.handle_interrupt       = aqr_handle_interrupt,
+-	.read_status    = aqr107_read_status,
++	.read_status    = aqr113c_read_status,
+ 	.get_tunable    = aqr107_get_tunable,
+ 	.set_tunable    = aqr107_set_tunable,
+ 	.suspend        = aqr107_suspend,
+@@ -971,14 +1017,13 @@ static struct phy_driver aqr_driver[] =
+ 	PHY_ID_MATCH_MODEL(PHY_ID_AQR813),
+ 	.name		= "Aquantia AQR813",
+ 	.probe		= aqr107_probe,
+-	.get_rate_matching = aqr107_get_rate_matching,
+ 	.config_init	= aqr107_config_init,
+-	.config_aneg	= aqr_config_aneg,
++	.config_aneg    = aqr_config_aneg,
+ 	.config_intr	= aqr_config_intr,
+ 	.handle_interrupt = aqr_handle_interrupt,
+-	.read_status	= aqr107_read_status,
+-	.get_tunable	= aqr107_get_tunable,
+-	.set_tunable	= aqr107_set_tunable,
++	.read_status	= aqr113c_read_status,
++	.get_tunable    = aqr107_get_tunable,
++	.set_tunable    = aqr107_set_tunable,
+ 	.suspend	= aqr107_suspend,
+ 	.resume		= aqr107_resume,
+ 	.get_sset_count	= aqr107_get_sset_count,
+@@ -995,28 +1040,28 @@ static struct phy_driver aqr_driver[] =
+ 	.read_status	= aqr107_read_status,
+ },
+ {
+-	PHY_ID_MATCH_MODEL(PHY_ID_AQR112C),
+-	.name		= "Aquantia AQR112C",
+-	.probe		= aqr107_probe,
+-	.config_aneg	= aqr_config_aneg_set_prot,
+-	.config_intr	= aqr_config_intr,
+-	.handle_interrupt = aqr_handle_interrupt,
+-	.read_status	= aqr107_read_status,
+-	.get_sset_count	= aqr107_get_sset_count,
+-	.get_strings	= aqr107_get_strings,
+-	.get_stats	= aqr107_get_stats,
++       PHY_ID_MATCH_MODEL(PHY_ID_AQR112C),
++       .name           = "Aquantia AQR112C",
++       .probe          = aqr107_probe,
++       .config_aneg    = aqr_config_aneg_set_prot,
++       .config_intr    = aqr_config_intr,
++       .handle_interrupt = aqr_handle_interrupt,
++       .read_status    = aqr107_read_status,
++       .get_sset_count = aqr107_get_sset_count,
++       .get_strings    = aqr107_get_strings,
++       .get_stats      = aqr107_get_stats,
+ },
+ {
+-	PHY_ID_MATCH_MODEL(PHY_ID_AQR112R),
+-	.name		= "Aquantia AQR112R",
+-	.probe		= aqr107_probe,
+-	.config_aneg	= aqr_config_aneg_set_prot,
+-	.config_intr	= aqr_config_intr,
+-	.handle_interrupt = aqr_handle_interrupt,
+-	.read_status	= aqr107_read_status,
+-	.get_sset_count	= aqr107_get_sset_count,
+-	.get_strings	= aqr107_get_strings,
+-	.get_stats	= aqr107_get_stats,
++       PHY_ID_MATCH_MODEL(PHY_ID_AQR112R),
++       .name           = "Aquantia AQR112R",
++       .probe          = aqr107_probe,
++       .config_aneg    = aqr_config_aneg_set_prot,
++       .config_intr    = aqr_config_intr,
++       .handle_interrupt = aqr_handle_interrupt,
++       .read_status    = aqr107_read_status,
++       .get_sset_count = aqr107_get_sset_count,
++       .get_strings    = aqr107_get_strings,
++       .get_stats      = aqr107_get_stats,
+ },
+ {
+ 	PHY_ID_MATCH_MODEL(PHY_ID_AQR108),
+@@ -1024,12 +1069,12 @@ static struct phy_driver aqr_driver[] =
+ 	.probe		= aqr107_probe,
+ 	.get_rate_matching = aqr107_get_rate_matching,
+ 	.config_init	= aqr107_config_init,
+-	.config_aneg	= aqr_config_aneg,
++	.config_aneg    = aqr_config_aneg,
+ 	.config_intr	= aqr_config_intr,
+ 	.handle_interrupt = aqr_handle_interrupt,
+ 	.read_status	= aqr107_read_status,
+-	.get_tunable	= aqr107_get_tunable,
+-	.set_tunable	= aqr107_set_tunable,
++	.get_tunable    = aqr107_get_tunable,
++	.set_tunable    = aqr107_set_tunable,
+ 	.suspend	= aqr107_suspend,
+ 	.resume		= aqr107_resume,
+ 	.get_sset_count	= aqr107_get_sset_count,
+@@ -1043,12 +1088,12 @@ static struct phy_driver aqr_driver[] =
+ 	.probe		= aqr107_probe,
+ 	.get_rate_matching = aqr107_get_rate_matching,
+ 	.config_init	= aqr107_config_init,
+-	.config_aneg	= aqr_config_aneg,
++	.config_aneg    = aqr_config_aneg,
+ 	.config_intr	= aqr_config_intr,
+ 	.handle_interrupt = aqr_handle_interrupt,
+ 	.read_status	= aqr107_read_status,
+-	.get_tunable	= aqr107_get_tunable,
+-	.set_tunable	= aqr107_set_tunable,
++	.get_tunable    = aqr107_get_tunable,
++	.set_tunable    = aqr107_set_tunable,
+ 	.suspend	= aqr107_suspend,
+ 	.resume		= aqr107_resume,
+ 	.get_sset_count	= aqr107_get_sset_count,
+@@ -1062,12 +1107,12 @@ static struct phy_driver aqr_driver[] =
+ 	.probe		= aqr107_probe,
+ 	.get_rate_matching = aqr107_get_rate_matching,
+ 	.config_init	= aqr107_config_init,
+-	.config_aneg	= aqr_config_aneg,
++	.config_aneg    = aqr_config_aneg,
+ 	.config_intr	= aqr_config_intr,
+ 	.handle_interrupt = aqr_handle_interrupt,
+ 	.read_status	= aqr107_read_status,
+-	.get_tunable	= aqr107_get_tunable,
+-	.set_tunable	= aqr107_set_tunable,
++	.get_tunable    = aqr107_get_tunable,
++	.set_tunable    = aqr107_set_tunable,
+ 	.suspend	= aqr107_suspend,
+ 	.resume		= aqr107_resume,
+ 	.get_sset_count	= aqr107_get_sset_count,
+@@ -1077,21 +1122,21 @@ static struct phy_driver aqr_driver[] =
+ },
+ {
+ 	PHY_ID_MATCH_MODEL(PHY_ID_MVLX3410),
+-	.name		= "MVLX3410",
+-	.probe		= aqr107_probe,
++	.name           = "MVLX3410",
++	.probe          = aqr107_probe,
+ 	.get_rate_matching = aqr107_get_rate_matching,
+-	.config_init	= aqr107_config_init,
+-	.config_aneg	= aqr_config_aneg,
+-	.config_intr	= aqr_config_intr,
+-	.handle_interrupt = aqr_handle_interrupt,
+-	.read_status	= aqr107_read_status,
+-	.get_tunable	= aqr107_get_tunable,
+-	.set_tunable	= aqr107_set_tunable,
+-	.suspend	= aqr107_suspend,
+-	.resume		= aqr107_resume,
+-	.get_sset_count	= aqr107_get_sset_count,
+-	.get_strings	= aqr107_get_strings,
+-	.get_stats	= aqr107_get_stats,
++	.config_init    = aqr107_config_init,
++	.config_aneg    = aqr_config_aneg,
++	.config_intr    = aqr_config_intr,
++	.handle_interrupt       = aqr_handle_interrupt,
++	.read_status    = aqr113c_read_status,
++	.get_tunable    = aqr107_get_tunable,
++	.set_tunable    = aqr107_set_tunable,
++	.suspend        = aqr107_suspend,
++	.resume         = aqr107_resume,
++	.get_sset_count = aqr107_get_sset_count,
++	.get_strings    = aqr107_get_strings,
++	.get_stats      = aqr107_get_stats,
+ 	.link_change_notify = aqr107_link_change_notify,
+ },
+ };
+diff --git a/drivers/net/phy/sfp.c b/drivers/net/phy/sfp.c
+--- a/drivers/net/phy/sfp.c
++++ b/drivers/net/phy/sfp.c
+@@ -2651,8 +2651,7 @@ static void sfp_sm_main(struct sfp *sfp,
+ 			 * or t_start_up, so assume there is a fault.
+ 			 */
+ 			sfp_sm_fault(sfp, SFP_S_INIT_TX_FAULT,
+-					!(sfp->state_ignore_mask & SFP_F_TX_FAULT) &&
+-				     (sfp->sm_fault_retries == N_FAULT_INIT));
++				     sfp->sm_fault_retries == N_FAULT_INIT);
+ 		} else if (event == SFP_E_TIMEOUT || event == SFP_E_TX_CLEAR) {
+ 	init_done:
+ 			/* Create mdiobus and start trying for PHY */
+@@ -2905,10 +2904,8 @@ static void sfp_check_state(struct sfp *
+ 	rtnl_lock();
+ 	mutex_lock(&sfp->st_mutex);
+ 	state = sfp_get_state(sfp);
+-	state &= ~sfp->state_ignore_mask;
+ 	changed = state ^ sfp->state;
+-	changed &= (SFP_F_PRESENT | SFP_F_LOS | SFP_F_TX_FAULT) &
+-		   ~sfp->state_ignore_mask;
++	changed &= SFP_F_PRESENT | SFP_F_LOS | SFP_F_TX_FAULT;
+ 
+ 	for (i = 0; i < GPIO_MAX; i++)
+ 		if (changed & BIT(i))
+diff --git a/drivers/net/vxlan/vxlan_core.c b/drivers/net/vxlan/vxlan_core.c
+--- a/drivers/net/vxlan/vxlan_core.c
++++ b/drivers/net/vxlan/vxlan_core.c
+@@ -2670,7 +2670,7 @@ void vxlan_xmit_one(struct sk_buff *skb,
+ 			goto out_unlock;
+ 		}
+ 
+-		/* Reset the skb_iif to Tunnels interface index */
++                /* Reset the skb_iif to Tunnels interface index */
+ 		skb->skb_iif = dev->ifindex;
+ 
+ 		tos = ip_tunnel_ecn_encap(tos, ip_hdr(skb), skb);
+@@ -2747,7 +2747,7 @@ void vxlan_xmit_one(struct sk_buff *skb,
+ 		if (err < 0)
+ 			goto tx_error;
+ 
+-		/* Reset the skb_iif to Tunnels interface index */
++                /* Reset the skb_iif to Tunnels interface index */
+ 		skb->skb_iif = dev->ifindex;
+ 
+ 		udp_tunnel6_xmit_skb(ndst, sock6->sock->sk, skb, dev,
+diff --git a/include/linux/if_bridge.h b/include/linux/if_bridge.h
+--- a/include/linux/if_bridge.h
++++ b/include/linux/if_bridge.h
+@@ -73,6 +73,7 @@ struct net_bridge_port;
+ void brioctl_set(int (*hook)(struct net *net, unsigned int cmd,
+ 			     void __user *uarg));
+ int br_ioctl_call(struct net *net, unsigned int cmd, void __user *uarg);
++
+ extern struct net_device *br_port_dev_get(struct net_device *dev,
+ 					  unsigned char *addr,
+ 					  struct sk_buff *skb,
+@@ -82,8 +83,8 @@ extern void br_fdb_entry_refresh(struct
+ extern void br_dev_update_stats(struct net_device *dev,
+ 				struct rtnl_link_stats64 *nlstats);
+ extern struct net_bridge_fdb_entry *br_fdb_has_entry(struct net_device *dev,
+-					     const char *addr,
+-					     __u16 vid);
++						     const char *addr,
++						     __u16 vid);
+ extern void br_fdb_update_register_notify(struct notifier_block *nb);
+ extern void br_fdb_update_unregister_notify(struct notifier_block *nb);
+ #if IS_ENABLED(CONFIG_BRIDGE_MCAST_OFFLOAD)
+diff --git a/net/bridge/br_forward.c b/net/bridge/br_forward.c
+--- a/net/bridge/br_forward.c
++++ b/net/bridge/br_forward.c
+@@ -22,36 +22,19 @@ static inline int should_deliver(const s
+ 				 const struct sk_buff *skb)
+ {
+ 	struct net_bridge_vlan_group *vg;
+-	bool forwarding;
+ 
+ 	vg = nbp_vlan_group_rcu(p);
+-	forwarding = br_mst_is_enabled(p) || p->state == BR_STATE_FORWARDING;
+-
+-	if (skb->dev != p->dev && forwarding &&
+-	    br_allowed_egress(vg, skb) && nbp_switchdev_allowed_egress(p, skb) &&
+-	    !br_skb_isolated(p, skb))
+-		return true;
+-
+-	if (skb->dev == p->dev && (p->flags & BR_HAIRPIN_MODE) &&
+-	    br_allowed_egress(vg, skb) && forwarding) {
+-		/* Allow hairpin only on WLAN netdevices.
+-		 * For ethernet interfaces, hairpin is not allowed
+-		 * due to issues with switchdevs.
+-		 */
+-		if (!skb->dev->ieee80211_ptr)
+-			return false;
+-
+-		/* When hairpin is enabled, do not flood multicast/broadcast
+-		 * back to the originating port if the port disabled it.
+-		 */
+-		if ((p->flags & BR_NO_HAIRPIN_FLOOD) &&
+-		    is_multicast_ether_addr(eth_hdr(skb)->h_dest))
+-			return false;
+-
+-		return true;
+-	}
+-
+-	return false;
++	/*
++	 * When hairpin enabled, don't allow multicast go back
++	 * to the original device that disabled hairpin flood.
++	 */
++	return (((p->flags & BR_HAIRPIN_MODE)
++		&& (!(p->flags & BR_NO_HAIRPIN_FLOOD)
++			|| !is_multicast_ether_addr(eth_hdr(skb)->h_dest)))
++		|| (skb->dev != p->dev)) &&
++		(br_mst_is_enabled(p) || p->state == BR_STATE_FORWARDING) &&
++		br_allowed_egress(vg, skb) && nbp_switchdev_allowed_egress(p, skb) &&
++		!br_skb_isolated(p, skb);
+ }
+ 
+ int br_dev_queue_push_xmit(struct net *net, struct sock *sk, struct sk_buff *skb)
+diff --git a/net/core/net-procfs.c b/net/core/net-procfs.c
+--- a/net/core/net-procfs.c
++++ b/net/core/net-procfs.c
+@@ -345,12 +345,12 @@ static int __net_init dev_proc_net_init(
+ 			sizeof(struct seq_net_private)))
+ 		goto out;
+ 	if (!IS_ENABLED(CONFIG_PROC_STRIPPED) &&
+-	    !proc_create_seq("softnet_stat", 0444, net->proc_net,
+-			     &softnet_seq_ops))
++			!proc_create_seq("softnet_stat", 0444, net->proc_net,
++			 &softnet_seq_ops))
+ 		goto out_dev;
+ 	if (!IS_ENABLED(CONFIG_PROC_STRIPPED) &&
+-	    !proc_create_net("ptype", 0444, net->proc_net, &ptype_seq_ops,
+-			     sizeof(struct ptype_iter_state)))
++			!proc_create_net("ptype", 0444, net->proc_net, &ptype_seq_ops,
++			sizeof(struct ptype_iter_state)))
+ 		goto out_softnet;
+ 
+ 	if (wext_proc_init(net))
+diff --git a/net/core/skbuff.c b/net/core/skbuff.c
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -909,10 +909,10 @@ struct sk_buff *__netdev_alloc_skb(struc
+ 	void *data;
+ 
+ 	len += NET_SKB_PAD;
++
+ #ifdef CONFIG_ALLOC_SKB_PAGE_FRAG_DISABLE
+ 	page_frag_alloc_enable = false;
+ #endif
+-
+ 	/* If requested length is either too small or too big,
+ 	 * we use kmalloc() for skb->head allocation.
+ 	 */
+diff --git a/net/dsa/dsa.c b/net/dsa/dsa.c
+--- a/net/dsa/dsa.c
++++ b/net/dsa/dsa.c
+@@ -1677,6 +1677,7 @@ void dsa_switch_shutdown(struct dsa_swit
+ 	dsa_switch_for_each_cpu_port(dp, ds) {
+ 		dp->master->ethtool_ops = dp->orig_ethtool_ops;
+ 		dp->orig_ethtool_ops = NULL;
++
+ 		dp->master->dsa_ptr = NULL;
+ 		netdev_put(dp->master, &dp->master_tracker);
+ 	}
+diff --git a/net/ipv4/esp4.c b/net/ipv4/esp4.c
+--- a/net/ipv4/esp4.c
++++ b/net/ipv4/esp4.c
+@@ -939,6 +939,7 @@ static u32 esp4_get_mtu(struct xfrm_stat
+ 	struct crypto_aead *aead = x->data;
+ 	u32 blksize = ALIGN(crypto_aead_blocksize(aead), 4);
+ 	unsigned int net_adj;
++	u32 overhead, payload_mtu;
+ 
+ 	switch (x->props.mode) {
+ 	case XFRM_MODE_TRANSPORT:
+@@ -952,8 +953,16 @@ static u32 esp4_get_mtu(struct xfrm_stat
+ 		BUG();
+ 	}
+ 
+-	return ((mtu - x->props.header_len - crypto_aead_authsize(aead) -
+-		 net_adj) & ~(blksize - 1)) + net_adj - 2;
++	overhead = x->props.header_len + crypto_aead_authsize(aead) + net_adj;
++	if (mtu <= overhead)
++		return 1;
++
++	payload_mtu = mtu - overhead;
++	payload_mtu &= ~(blksize - 1);
++	if (payload_mtu <= 2)
++		return 1;
++
++	return payload_mtu + net_adj - 2;
+ }
+ 
+ static int esp4_err(struct sk_buff *skb, u32 info)
+diff --git a/net/ipv6/esp6.c b/net/ipv6/esp6.c
+--- a/net/ipv6/esp6.c
++++ b/net/ipv6/esp6.c
+@@ -987,12 +987,21 @@ static u32 esp6_get_mtu(struct xfrm_stat
+ 	struct crypto_aead *aead = x->data;
+ 	u32 blksize = ALIGN(crypto_aead_blocksize(aead), 4);
+ 	unsigned int net_adj = 0;
++	u32 overhead, payload_mtu;
+ 
+ 	if (x->props.mode != XFRM_MODE_TUNNEL)
+ 		net_adj = sizeof(struct ipv6hdr);
+ 
+-	return ((mtu - x->props.header_len - crypto_aead_authsize(aead) -
+-		 net_adj) & ~(blksize - 1)) + net_adj - 2;
++	overhead = x->props.header_len + crypto_aead_authsize(aead) + net_adj;
++	if (mtu <= overhead)
++		return 1;
++
++	payload_mtu = mtu - overhead;
++	payload_mtu &= ~(blksize - 1);
++	if (payload_mtu <= 2)
++		return 1;
++
++	return payload_mtu + net_adj - 2;
+ }
+ 
+ static int esp6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
+diff --git a/net/netfilter/nf_conntrack_netlink.c b/net/netfilter/nf_conntrack_netlink.c
+--- a/net/netfilter/nf_conntrack_netlink.c
++++ b/net/netfilter/nf_conntrack_netlink.c
+@@ -3134,8 +3134,8 @@ errout:
+ 	return 0;
+ }
+ #endif
+-
+ #endif
++
+ static unsigned long ctnetlink_exp_id(const struct nf_conntrack_expect *exp)
+ {
+ 	unsigned long id = (unsigned long)exp;
+diff --git a/net/qrtr/af_qrtr.c b/net/qrtr/af_qrtr.c
+--- a/net/qrtr/af_qrtr.c
++++ b/net/qrtr/af_qrtr.c
+@@ -735,8 +735,8 @@ static void qrtr_node_rx_work(struct kth
+ 	struct qrtr_node *node = container_of(work, struct qrtr_node,
+ 					      read_data);
+ 	struct qrtr_ctrl_pkt *pkt;
+-	unsigned long index;
+ 	struct qrtr_tx_flow *flow;
++	unsigned long index;
+ 	struct sk_buff *skb;
+ 	struct qrtr_sock *ipc;
+ 
+diff --git a/net/sched/sch_codel.c b/net/sched/sch_codel.c
+--- a/net/sched/sch_codel.c
++++ b/net/sched/sch_codel.c
+@@ -95,21 +95,6 @@ static struct sk_buff *__codel_qdisc_deq
+ 			    &q->stats, qdisc_pkt_len, codel_get_enqueue_time,
+ 			    drop_func, dequeue_func);
+ 
+-	/* If our qlen is 0 qdisc_tree_reduce_backlog() will deactivate
+-	 * parent class, dequeue in parent qdisc will do the same if we
+-	 * return skb. Temporary increment qlen if we have skb.
+-	 */
+-	if (q->stats.drop_count) {
+-		if (skb)
+-			sch->q.qlen++;
+-		qdisc_tree_reduce_backlog(sch, q->stats.drop_count,
+-					  q->stats.drop_len);
+-		if (skb)
+-			sch->q.qlen--;
+-		q->stats.drop_count = 0;
+-		q->stats.drop_len = 0;
+-	}
+-
+ 	if (skb)
+ 		qdisc_bstats_update(sch, skb);
+ 	return skb;
+diff --git a/net/sched/sch_fq_codel.c b/net/sched/sch_fq_codel.c
+--- a/net/sched/sch_fq_codel.c
++++ b/net/sched/sch_fq_codel.c
+@@ -304,21 +304,6 @@ begin:
+ 			    &flow->cvars, &q->cstats, qdisc_pkt_len,
+ 			    codel_get_enqueue_time, drop_func, dequeue_func);
+ 
+-	/* If our qlen is 0 qdisc_tree_reduce_backlog() will deactivate
+-	 * parent class, dequeue in parent qdisc will do the same if we
+-	 * return skb. Temporary increment qlen if we have skb.
+-	 */
+-	if (q->cstats.drop_count) {
+-		if (skb)
+-			sch->q.qlen++;
+-		qdisc_tree_reduce_backlog(sch, q->cstats.drop_count,
+-					  q->cstats.drop_len);
+-		if (skb)
+-			sch->q.qlen--;
+-		q->cstats.drop_count = 0;
+-		q->cstats.drop_len = 0;
+-	}
+-
+ 	if (!skb) {
+ 		/* force a pass through old_flows to prevent starvation */
+ 		if ((head == &q->new_flows) && !list_empty(&q->old_flows))
+diff --git a/net/xfrm/xfrm_state.c b/net/xfrm/xfrm_state.c
+--- a/net/xfrm/xfrm_state.c
++++ b/net/xfrm/xfrm_state.c
+@@ -2876,6 +2876,9 @@ int xfrm_state_mtu(struct xfrm_state *x,
+ 	    type && type->get_mtu)
+ 		return type->get_mtu(x, mtu);
+ 
++	if (mtu <= x->props.header_len)
++		return 1;
++
+ 	return mtu - x->props.header_len;
+ }
+ 

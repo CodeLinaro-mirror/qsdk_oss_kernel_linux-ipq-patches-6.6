@@ -49,7 +49,7 @@ diff --git a/net/core/skbuff.c b/net/core/skbuff.c
 index 0c8f2558722b..786b5bdd205e 100644
 --- a/net/core/skbuff.c
 +++ b/net/core/skbuff.c
-@@ -763,16 +763,22 @@ struct sk_buff *__netdev_alloc_skb(struct net_device *dev,
+@@ -766,16 +766,21 @@ struct sk_buff *__netdev_alloc_skb(struc
  #else
  	struct page_frag_cache *nc;
  	bool pfmemalloc;
@@ -57,15 +57,14 @@ index 0c8f2558722b..786b5bdd205e 100644
  	void *data;
  
  	len += NET_SKB_PAD;
- 
-+
 +#ifdef CONFIG_ALLOC_SKB_PAGE_FRAG_DISABLE
 +	page_frag_alloc_enable = false;
 +#endif
+ 
  	/* If requested length is either too small or too big,
  	 * we use kmalloc() for skb->head allocation.
  	 */
- 	if (len <= SKB_WITH_OVERHEAD(1024) ||
+ 	if (len <= SKB_WITH_OVERHEAD(SKB_SMALL_HEAD_CACHE_SIZE) ||
  	    len > SKB_WITH_OVERHEAD(PAGE_SIZE) ||
 -	    (gfp_mask & (__GFP_DIRECT_RECLAIM | GFP_DMA))) {
 +	    (gfp_mask & (__GFP_DIRECT_RECLAIM | GFP_DMA)) ||
@@ -73,6 +72,3 @@ index 0c8f2558722b..786b5bdd205e 100644
  		skb = __alloc_skb(len, gfp_mask, SKB_ALLOC_RX, NUMA_NO_NODE);
  		if (!skb)
  			goto skb_fail;
--- 
-2.34.1
-

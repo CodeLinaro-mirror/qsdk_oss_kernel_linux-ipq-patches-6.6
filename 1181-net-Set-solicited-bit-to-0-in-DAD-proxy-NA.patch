@@ -13,17 +13,17 @@ diff --git a/net/bridge/br_arp_nd_proxy.c b/net/bridge/br_arp_nd_proxy.c
 index e179123ba185..5ef2d6db3544 100644
 --- a/net/bridge/br_arp_nd_proxy.c
 +++ b/net/bridge/br_arp_nd_proxy.c
-@@ -260,7 +260,9 @@ static void br_nd_send(struct net_bridge *br, struct net_bridge_port *p,
+@@ -261,7 +261,9 @@ static void br_nd_send(struct net_bridge
  	int i, len;
  	u8 *daddr;
  	u16 pvid;
 +	bool is_dad_ns = false;
  
 +	is_dad_ns = ipv6_addr_any(&(ipv6_hdr(request)->saddr));
- 	if (!dev)
+ 	if (!dev || skb_linearize(request))
  		return;
  
-@@ -310,7 +312,7 @@ static void br_nd_send(struct net_bridge *br, struct net_bridge_port *p,
+@@ -315,7 +317,7 @@ static void br_nd_send(struct net_bridge
  	pip6->priority = ipv6_hdr(request)->priority;
  	pip6->nexthdr = IPPROTO_ICMPV6;
  	pip6->hop_limit = 255;
@@ -32,7 +32,7 @@ index e179123ba185..5ef2d6db3544 100644
  	pip6->saddr = *(struct in6_addr *)n->primary_key;
  
  	skb_pull(reply, sizeof(struct ipv6hdr));
-@@ -323,7 +325,7 @@ static void br_nd_send(struct net_bridge *br, struct net_bridge_port *p,
+@@ -328,7 +330,7 @@ static void br_nd_send(struct net_bridge
  	na->icmph.icmp6_type = NDISC_NEIGHBOUR_ADVERTISEMENT;
  	na->icmph.icmp6_router = (n->flags & NTF_ROUTER) ? 1 : 0;
  	na->icmph.icmp6_override = 1;
@@ -41,6 +41,3 @@ index e179123ba185..5ef2d6db3544 100644
  	na->target = ns->target;
  	ether_addr_copy(&na->opt[2], n->ha);
  	na->opt[0] = ND_OPT_TARGET_LL_ADDR;
--- 
-2.34.1
-

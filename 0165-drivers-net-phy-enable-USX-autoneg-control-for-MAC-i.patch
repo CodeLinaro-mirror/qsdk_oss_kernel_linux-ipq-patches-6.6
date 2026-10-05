@@ -11,36 +11,35 @@ Signed-off-by: zhongjia <quic_zhongjia@quicinc.com>
  drivers/net/phy/aquantia_main.c | 13 +++++++++++++
  1 file changed, 13 insertions(+)
 
-diff --git a/drivers/net/phy/aquantia_main.c b/drivers/net/phy/aquantia_main.c
+diff --git a/drivers/net/phy/aquantia/aquantia_main.c b/drivers/net/phy/aquantia/aquantia_main.c
 index eade3b9aece7..a9b3ea992afa 100755
---- a/drivers/net/phy/aquantia_main.c
-+++ b/drivers/net/phy/aquantia_main.c
-@@ -47,6 +47,9 @@
+--- a/drivers/net/phy/aquantia/aquantia_main.c
++++ b/drivers/net/phy/aquantia/aquantia_main.c
+@@ -44,6 +44,8 @@
+ #define MDIO_PHYXS_VEND_IF_STATUS_TYPE_SGMII	6
  #define MDIO_PHYXS_VEND_IF_STATUS_TYPE_RXAUI	7
  #define MDIO_PHYXS_VEND_IF_STATUS_TYPE_OCSGMII	10
- 
 +#define MDIO_PHYXS_VEND_USX_AUTONEG_STATUS	0xc441
 +#define MDIO_PHYXS_VEND_USX_AUTONEG_STATUS_ENABLE	BIT(3)
-+
+ 
  #define MDIO_AN_VEND_PROV			0xc400
  #define MDIO_AN_VEND_PROV_1000BASET_FULL	BIT(15)
- #define MDIO_AN_VEND_PROV_1000BASET_HALF	BIT(14)
-@@ -267,6 +270,14 @@ static void aqr107_get_stats(struct phy_device *phydev,
+@@ -265,6 +267,14 @@ static void aqr107_get_stats(struct phy_
  	}
  }
  
 +static int aqr107_autoneg_ctrl_init(struct phy_device *phydev)
 +{
 +	return phy_modify_mmd(phydev, MDIO_MMD_PHYXS,
-+		MDIO_PHYXS_VEND_USX_AUTONEG_STATUS,
-+		MDIO_PHYXS_VEND_USX_AUTONEG_STATUS_ENABLE,
-+		MDIO_PHYXS_VEND_USX_AUTONEG_STATUS_ENABLE);
++			      MDIO_PHYXS_VEND_USX_AUTONEG_STATUS,
++			      MDIO_PHYXS_VEND_USX_AUTONEG_STATUS_ENABLE,
++			      MDIO_PHYXS_VEND_USX_AUTONEG_STATUS_ENABLE);
 +}
 +
  static int aqr_config_aneg(struct phy_device *phydev)
  {
  	bool changed = false;
-@@ -710,6 +721,8 @@ static int aqr107_config_init(struct phy_device *phydev)
+@@ -665,6 +675,8 @@ static int aqr107_config_init(struct phy
  	if (!ret)
  		aqr107_chip_info(phydev);
  
@@ -49,6 +48,3 @@ index eade3b9aece7..a9b3ea992afa 100755
  	return aqr107_set_downshift(phydev, MDIO_AN_VEND_PROV_DOWNSHIFT_DFLT);
  }
  
--- 
-2.34.1
-

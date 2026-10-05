@@ -35,7 +35,7 @@ diff --git a/net/sched/sch_codel.c b/net/sched/sch_codel.c
 index d7a4874543de..78a16a20bc77 100644
 --- a/net/sched/sch_codel.c 2025-06-17 15:16:46.499788999 +0530
 +++ b/net/sched/sch_codel.c 2025-06-17 15:19:52.571014717 +0530
-@@ -95,8 +95,17 @@
+@@ -95,6 +95,21 @@ static struct sk_buff *__codel_qdisc_deq
  			    &q->stats, qdisc_pkt_len, codel_get_enqueue_time,
  			    drop_func, dequeue_func);
  
@@ -43,54 +43,43 @@ index d7a4874543de..78a16a20bc77 100644
 +	 * parent class, dequeue in parent qdisc will do the same if we
 +	 * return skb. Temporary increment qlen if we have skb.
 +	 */
- 	if (q->stats.drop_count) {
--		qdisc_tree_reduce_backlog(sch, q->stats.drop_count, q->stats.drop_len);
++	if (q->stats.drop_count) {
 +		if (skb)
 +			sch->q.qlen++;
 +		qdisc_tree_reduce_backlog(sch, q->stats.drop_count,
 +					  q->stats.drop_len);
 +		if (skb)
 +			sch->q.qlen--;
- 		q->stats.drop_count = 0;
- 		q->stats.drop_len = 0;
- 	}
++		q->stats.drop_count = 0;
++		q->stats.drop_len = 0;
++	}
++
+ 	if (skb)
+ 		qdisc_bstats_update(sch, skb);
+ 	return skb;
 diff --git a/net/sched/sch_fq_codel.c b/net/sched/sch_fq_codel.c
 index 8c4fee063436..8254495808b4 100644
 --- a/net/sched/sch_fq_codel.c  2025-06-17 15:37:17.290665857 +0530
 +++ b/net/sched/sch_fq_codel.c  2025-06-17 15:40:05.581958520 +0530
-@@ -304,6 +304,21 @@
- 				&flow->cvars, &q->cstats, qdisc_pkt_len,
- 				codel_get_enqueue_time, drop_func, dequeue_func);
+@@ -304,6 +304,21 @@ begin:
+ 			    &flow->cvars, &q->cstats, qdisc_pkt_len,
+ 			    codel_get_enqueue_time, drop_func, dequeue_func);
  
-+   /* If our qlen is 0 qdisc_tree_reduce_backlog() will deactivate
-+    * parent class, dequeue in parent qdisc will do the same if we
-+    * return skb. Temporary increment qlen if we have skb.
-+    */
-+   if (q->stats.drop_count) {
-+       if (skb)
-+           sch->q.qlen++;
-+       qdisc_tree_reduce_backlog(sch, q->stats.drop_count,
-+                     q->stats.drop_len);
-+       if (skb)
-+           sch->q.qlen--;
-+       q->stats.drop_count = 0;
-+       q->stats.drop_len = 0;
-+   }
++	/* If our qlen is 0 qdisc_tree_reduce_backlog() will deactivate
++	 * parent class, dequeue in parent qdisc will do the same if we
++	 * return skb. Temporary increment qlen if we have skb.
++	 */
++	if (q->cstats.drop_count) {
++		if (skb)
++			sch->q.qlen++;
++		qdisc_tree_reduce_backlog(sch, q->cstats.drop_count,
++					  q->cstats.drop_len);
++		if (skb)
++			sch->q.qlen--;
++		q->cstats.drop_count = 0;
++		q->cstats.drop_len = 0;
++	}
 +
  	if (!skb) {
  		/* force a pass through old_flows to prevent starvation */
  		if ((head == &q->new_flows) && !list_empty(&q->old_flows))
-@@ -314,13 +329,6 @@
-	}
-	qdisc_bstats_update(sch, skb);
-	flow->deficit -= qdisc_pkt_len(skb);
--
--	if (q->cstats.drop_count) {
--		qdisc_tree_reduce_backlog(sch, q->cstats.drop_count,
--					  q->cstats.drop_len);
--		q->cstats.drop_count = 0;
--		q->cstats.drop_len = 0;
--	}
-	return skb;
- }
- 

@@ -41,18 +41,18 @@ diff --git a/include/linux/if_bridge.h b/include/linux/if_bridge.h
 index cff03a1dfd68..c62613c8ea1e 100644
 --- a/include/linux/if_bridge.h
 +++ b/include/linux/if_bridge.h
-@@ -71,6 +71,14 @@ void brioctl_set(int (*hook)(struct net *net, struct net_bridge *br,
+@@ -69,6 +69,14 @@ struct net_bridge;
+ void brioctl_set(int (*hook)(struct net *net, unsigned int cmd,
  			     void __user *uarg));
- int br_ioctl_call(struct net *net, struct net_bridge *br, unsigned int cmd,
- 		  struct ifreq *ifr, void __user *uarg);
+ int br_ioctl_call(struct net *net, unsigned int cmd, void __user *uarg);
 +extern struct net_device *br_port_dev_get(struct net_device *dev,
 +					  unsigned char *addr);
 +extern void br_refresh_fdb_entry(struct net_device *dev, const char *addr);
 +extern void br_dev_update_stats(struct net_device *dev,
 +				struct rtnl_link_stats64 *nlstats);
 +extern struct net_bridge_fdb_entry *br_fdb_has_entry(struct net_device *dev,
-+						     const char *addr,
-+						     __u16 vid);
++					     const char *addr,
++					     __u16 vid);
  
  #if IS_ENABLED(CONFIG_BRIDGE) && IS_ENABLED(CONFIG_BRIDGE_IGMP_SNOOPING)
  int br_multicast_list_adjacent(struct net_device *dev,
@@ -60,7 +60,7 @@ diff --git a/net/bridge/br_fdb.c b/net/bridge/br_fdb.c
 index e69a872bfc1d..83c8e7b5a89a 100644
 --- a/net/bridge/br_fdb.c
 +++ b/net/bridge/br_fdb.c
-@@ -914,6 +914,44 @@ void br_fdb_update(struct net_bridge *br, struct net_bridge_port *source,
+@@ -924,6 +924,44 @@ void br_fdb_update(struct net_bridge *br
  	}
  }
  
@@ -109,7 +109,7 @@ diff --git a/net/bridge/br_if.c b/net/bridge/br_if.c
 index 2450690f98cf..aa7a5798bd34 100644
 --- a/net/bridge/br_if.c
 +++ b/net/bridge/br_if.c
-@@ -775,3 +775,55 @@ bool br_port_flag_is_set(const struct net_device *dev, unsigned long flag)
+@@ -779,3 +779,55 @@ bool br_port_flag_is_set(const struct ne
  	return p->flags & flag;
  }
  EXPORT_SYMBOL_GPL(br_port_flag_is_set);
@@ -165,6 +165,3 @@ index 2450690f98cf..aa7a5798bd34 100644
 +	u64_stats_update_end(&stats->syncp);
 +}
 +EXPORT_SYMBOL_GPL(br_dev_update_stats);
--- 
-2.34.1
-

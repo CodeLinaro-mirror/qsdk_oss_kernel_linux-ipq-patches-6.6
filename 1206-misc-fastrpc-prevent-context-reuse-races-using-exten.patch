@@ -64,7 +64,7 @@ index 8cee0293a1e2..97eee1b87952 100644
  };
  
  struct fastrpc_device {
-@@ -735,7 +746,9 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
+@@ -741,7 +752,9 @@ static struct fastrpc_invoke_ctx *fastrp
  		spin_unlock_irqrestore(&cctx->lock, flags);
  		goto err_idr;
  	}
@@ -74,7 +74,7 @@ index 8cee0293a1e2..97eee1b87952 100644
  	spin_unlock_irqrestore(&cctx->lock, flags);
  
  	kref_init(&ctx->refcount);
-@@ -2739,20 +2752,29 @@ static int fastrpc_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
+@@ -2736,6 +2749,7 @@ static int fastrpc_rpmsg_callback(struct
  	struct fastrpc_invoke_ctx *ctx;
  	unsigned long flags;
  	unsigned long ctxid;
@@ -82,6 +82,9 @@ index 8cee0293a1e2..97eee1b87952 100644
  
  	if (len < sizeof(*rsp))
  		return -EINVAL;
+@@ -2743,16 +2757,24 @@ static int fastrpc_rpmsg_callback(struct
+ 	if (!cctx)
+ 		return -ENODEV;
  
 -	ctxid = FIELD_GET(FASTRPC_CTXID_MASK, rsp->ctx);
 +	idr = FIELD_GET(FASTRPC_CTXID_MASK, rsp->ctx);
@@ -98,17 +101,14 @@ index 8cee0293a1e2..97eee1b87952 100644
 +		dev_dbg(&rpdev->dev, "No context ID matches response\n");
 +		spin_unlock_irqrestore(&cctx->lock, flags);
 +		return 0;
-+	}
+ 	}
 +	if (ctx->ctxid != ctxid) {
 +		spin_unlock_irqrestore(&cctx->lock, flags);
 +		dev_dbg(&rpdev->dev, "Warning: rsp ctxid 0x%lx mismatch with local ctxid 0x%llx (full rsp ctx 0x%llx)\n",
-+				ctxid, ctx->ctxid, rsp->ctx);
++			ctxid, ctx->ctxid, rsp->ctx);
 +		return 0;
- 	}
++	}
 +	spin_unlock_irqrestore(&cctx->lock, flags);
  
  	ctx->retval = rsp->retval;
  	ctx->is_work_done = true;
--- 
-2.34.1
-
