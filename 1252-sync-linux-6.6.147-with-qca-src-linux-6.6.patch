@@ -604,36 +604,6 @@ diff --git a/include/linux/if_bridge.h b/include/linux/if_bridge.h
  extern void br_fdb_update_register_notify(struct notifier_block *nb);
  extern void br_fdb_update_unregister_notify(struct notifier_block *nb);
  #if IS_ENABLED(CONFIG_BRIDGE_MCAST_OFFLOAD)
-diff --git a/kernel/time/hrtimer.c b/kernel/time/hrtimer.c
---- a/kernel/time/hrtimer.c
-+++ b/kernel/time/hrtimer.c
-@@ -1232,7 +1232,7 @@ static int __hrtimer_start_range_ns_on_c
- 				    struct hrtimer_clock_base *base)
- {
- 	struct hrtimer_clock_base *new_base;
--	bool force_local, first;
-+	bool force_local, first, was_armed;
- 
- 	/*
- 	 * If the timer is on the local cpu base and is the first expiring
-@@ -1256,7 +1256,7 @@ static int __hrtimer_start_range_ns_on_c
- 	 * avoids programming the underlying clock event twice (once at
- 	 * removal and once after enqueue).
- 	 */
--	remove_hrtimer(timer, base, true, force_local);
-+	was_armed = remove_hrtimer(timer, base, true, force_local);
- 
- 	if (mode & HRTIMER_MODE_REL)
- 		tim = ktime_add_safe(tim, base->get_time());
-@@ -1267,7 +1267,7 @@ static int __hrtimer_start_range_ns_on_c
- 
- 	new_base = base;
- 
--	first = enqueue_hrtimer(timer, new_base, mode);
-+	first = enqueue_hrtimer(timer, new_base, mode, was_armed);
- 	if (!force_local)
- 		return first;
- 
 diff --git a/net/bridge/br_forward.c b/net/bridge/br_forward.c
 --- a/net/bridge/br_forward.c
 +++ b/net/bridge/br_forward.c
