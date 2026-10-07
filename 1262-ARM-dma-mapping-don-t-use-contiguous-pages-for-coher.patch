@@ -1,0 +1,82 @@
+From f0955b9de10003836fe6078b20caff3970d20914 Mon Sep 17 00:00:00 2001
+From: Kathiravan Thirumoorthy <kathirav@qti.qualcomm.com>
+Date: Thu, 1 Oct 2026 17:45:47 +0530
+Subject: [PATCH] ARM: dma-mapping: don't use contiguous pages for coherent
+ IOMMU allocs
+
+For dma-coherent devices, arm_iommu_alloc_attrs() always takes the
+__iommu_alloc_simple() path, which allocates a single physically
+contiguous buffer with alloc_pages(). This defeats the purpose of having
+an IOMMU: allocations larger than MAX_ORDER fail with a WARN from
+__alloc_pages(), and smaller high order allocations easily fail once
+memory is fragmented. Since the buffer is not vmapped, dma_mmap_attrs()
+and dma_get_sgtable_attrs() also fail with -ENXIO for these buffers.
+
+This was seen with FastRPC on IPQ9650 running a 32-bit kernel once the
+compute context banks were marked dma-coherent.
+
+Only use the simple path for allocations that can't block, and allocate
+blocking requests from individual pages remapped through
+dma_common_pages_remap(), as is done for non-coherent devices. Use a
+cacheable PAGE_KERNEL mapping for coherent devices, as dma-iommu does.
+
+In arm_iommu_free_attrs(), pick the free path based on how the buffer
+was allocated instead of on the device coherency alone.
+
+
+Change-Id: Ie3217453cd436eadca59e6d13c5166d4ddd83542
+Signed-off-by: Kathiravan Thirumoorthy <kathirav@qti.qualcomm.com>
+---
+ arch/arm/mm/dma-mapping.c | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm/mm/dma-mapping.c b/arch/arm/mm/dma-mapping.c
+index 3bf371cc327c..82cf128689db 100644
+--- a/arch/arm/mm/dma-mapping.c
++++ b/arch/arm/mm/dma-mapping.c
+@@ -1080,7 +1080,7 @@ static void __iommu_free_atomic(struct device *dev, void *cpu_addr,
+ static void *arm_iommu_alloc_attrs(struct device *dev, size_t size,
+ 	    dma_addr_t *handle, gfp_t gfp, unsigned long attrs)
+ {
+-	pgprot_t prot = __get_dma_pgprot(attrs, PAGE_KERNEL);
++	pgprot_t prot;
+ 	struct page **pages;
+ 	void *addr = NULL;
+ 	int coherent_flag = dev->dma_coherent ? COHERENT : NORMAL;
+@@ -1088,7 +1088,7 @@ static void *arm_iommu_alloc_attrs(struct device *dev, size_t size,
+ 	*handle = DMA_MAPPING_ERROR;
+ 	size = PAGE_ALIGN(size);
+ 
+-	if (coherent_flag  == COHERENT || !gfpflags_allow_blocking(gfp))
++	if (!gfpflags_allow_blocking(gfp))
+ 		return __iommu_alloc_simple(dev, size, gfp, handle,
+ 					    coherent_flag, attrs);
+ 
+@@ -1103,6 +1103,9 @@ static void *arm_iommu_alloc_attrs(struct device *dev, size_t size,
+ 	if (attrs & DMA_ATTR_NO_KERNEL_MAPPING)
+ 		return pages;
+ 
++	/* Coherent devices snoop the CPU caches, use a cacheable mapping */
++	prot = coherent_flag == COHERENT ? PAGE_KERNEL :
++					   __get_dma_pgprot(attrs, PAGE_KERNEL);
+ 	addr = dma_common_pages_remap(pages, size, prot,
+ 				   __builtin_return_address(0));
+ 	if (!addr)
+@@ -1152,7 +1155,13 @@ static void arm_iommu_free_attrs(struct device *dev, size_t size, void *cpu_addr
+ 	struct page **pages;
+ 	size = PAGE_ALIGN(size);
+ 
+-	if (coherent_flag == COHERENT || __in_atomic_pool(cpu_addr, size)) {
++	/*
++	 * Atomic allocations come from the atomic pool or, for coherent
++	 * devices, from the linear mapping. Everything else was remapped.
++	 */
++	if (__in_atomic_pool(cpu_addr, size) ||
++	    (coherent_flag == COHERENT && !is_vmalloc_addr(cpu_addr) &&
++	     !(attrs & DMA_ATTR_NO_KERNEL_MAPPING))) {
+ 		__iommu_free_atomic(dev, cpu_addr, handle, size, coherent_flag);
+ 		return;
+ 	}
+-- 
+2.34.1
+
