@@ -1,0 +1,149 @@
+From b8aed8ce73efe47b500ef920e2ea561c5d1ea0aa Mon Sep 17 00:00:00 2001
+From: Ananya Ghosh <ananghos@qti.qualcomm.com>
+Date: Tue, 6 Oct 2026 12:34:58 +0530
+Subject: [PATCH] Revert all gerrits related to Belmar IPQ56xx in linux-ipq-6.6
+
+This reverts commits
+ec816e9a7705be202e5bedb554a90e8c34fb5d01
+804dd28510ee59388289227e3deb54caad8e79ae
+8a18b35510eeb9c214846151b7dbff54c17e9150
+4ceb593fc53572b6da07e111182f94bb95837ba6
+6dc15bc7f1042887a3d20d7912cb4800b0e5266c
+
+Change-Id: I3285c1b94eb182b8060b2d20afa073f9c3e8ef0e
+Signed-off-by: Ananya Ghosh <ananghos@qti.qualcomm.com>
+---
+ arch/arm/mach-qcom/Kconfig             |  4 ----
+ drivers/clk/qcom/Kconfig               |  8 --------
+ drivers/clk/qcom/Makefile              |  1 -
+ drivers/mtd/nand/raw/qcom_nandc.c      | 15 ---------------
+ drivers/pci/controller/dwc/pcie-qcom.c |  1 -
+ drivers/pinctrl/qcom/Kconfig.msm       |  8 --------
+ drivers/pinctrl/qcom/Makefile          |  1 -
+ 7 files changed, 38 deletions(-)
+
+diff --git a/arch/arm/mach-qcom/Kconfig b/arch/arm/mach-qcom/Kconfig
+index 2bcfafcb0208..12dd82f922df 100644
+--- a/arch/arm/mach-qcom/Kconfig
++++ b/arch/arm/mach-qcom/Kconfig
+@@ -25,10 +25,6 @@ config ARCH_IPQ9650
+ 	bool "Enable support for IPQ9650"
+ 	select ARM_GIC_V3
+ 
+-config ARCH_IPQ5610
+-	bool "Enable support for IPQ5610"
+-	select ARM_GIC_V3
+-
+ config ARCH_MSM8X60
+ 	bool "Enable support for MSM8X60"
+ 	select CLKSRC_QCOM
+diff --git a/drivers/clk/qcom/Kconfig b/drivers/clk/qcom/Kconfig
+index e91f958253fb..44979462496f 100644
+--- a/drivers/clk/qcom/Kconfig
++++ b/drivers/clk/qcom/Kconfig
+@@ -199,14 +199,6 @@ config IPQ_GCC_5424
+ 	  Say Y if you want to use peripheral devices such as UART, SPI,
+ 	  i2c, USB, SD/eMMC, etc.
+ 
+-config IPQ_GCC_5610
+-	tristate "IPQ5610 Global Clock Controller"
+-	help
+-	  Support for global clock controller on ipq5610 devices.
+-	  Say Y if you want to use peripheral devices such as UART, SPI,
+-	  i2c, USB, SD/eMMC, etc. Select this for the root clock
+-	  of ipq5610.
+-
+ config IPQ_GCC_6018
+ 	tristate "IPQ6018 Global Clock Controller"
+ 	help
+diff --git a/drivers/clk/qcom/Makefile b/drivers/clk/qcom/Makefile
+index 3775771f62bd..3f7f00d68f7c 100644
+--- a/drivers/clk/qcom/Makefile
++++ b/drivers/clk/qcom/Makefile
+@@ -30,7 +30,6 @@ obj-$(CONFIG_IPQ_GCC_4019) += gcc-ipq4019.o
+ obj-$(CONFIG_IPQ_GCC_5018) += gcc-ipq5018.o
+ obj-$(CONFIG_IPQ_GCC_5332) += gcc-ipq5332.o
+ obj-$(CONFIG_IPQ_GCC_5424) += gcc-ipq5424.o
+-obj-$(CONFIG_IPQ_GCC_5610) += gcc-ipq5610.o
+ obj-$(CONFIG_IPQ_GCC_5210) += gcc-ipq5210.o
+ obj-$(CONFIG_IPQ_GCC_6018) += gcc-ipq6018.o
+ obj-$(CONFIG_IPQ_GCC_806X) += gcc-ipq806x.o
+diff --git a/drivers/mtd/nand/raw/qcom_nandc.c b/drivers/mtd/nand/raw/qcom_nandc.c
+index 25420a9ec77e..14cb01862f43 100644
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -4387,17 +4387,6 @@ static const struct qcom_nandc_props ipq5210_nandc_props = {
+ 	.dev_cmd_reg_start = 0x7000,
+ };
+ 
+-static const struct qcom_nandc_props ipq5610_nandc_props = {
+-	.ecc_modes = (ECC_BCH_4BIT | ECC_BCH_8BIT),
+-	.is_bam = true,
+-	.is_serial_nand = true,
+-	.qpic_v2 = true,
+-	.is_serial_training = true,
+-	.quad_mode = true,
+-	.page_scope = true,
+-	.dev_cmd_reg_start = 0x7000,
+-};
+-
+ static const struct qcom_nandc_props ipq9574_nandc_props = {
+ 	.ecc_modes = (ECC_BCH_4BIT | ECC_BCH_8BIT),
+ 	.is_bam = true,
+@@ -4454,10 +4443,6 @@ static const struct of_device_id qcom_nandc_of_match[] = {
+ 		.compatible = "qcom,ipq5210-nand",
+ 		.data = &ipq5210_nandc_props,
+ 	},
+-	{
+-		.compatible = "qcom,ipq5610-nand",
+-		.data = &ipq5610_nandc_props,
+-	},
+ 	{
+ 		.compatible = "qcom,ipq9574-nand",
+ 		.data = &ipq9574_nandc_props,
+diff --git a/drivers/pci/controller/dwc/pcie-qcom.c b/drivers/pci/controller/dwc/pcie-qcom.c
+index 43f090dae664..748345b5ebed 100644
+--- a/drivers/pci/controller/dwc/pcie-qcom.c
++++ b/drivers/pci/controller/dwc/pcie-qcom.c
+@@ -2534,7 +2534,6 @@ static const struct of_device_id qcom_pcie_match[] = {
+ 	{ .compatible = "qti,pcie-ipq5332", .data = &cfg_1_27_0 },
+ 	{ .compatible = "qcom,pcie-ipq5424", .data = &cfg_1_27_0 },
+ 	{ .compatible = "qcom,pcie-ipq5210", .data = &cfg_1_27_0 },
+-	{ .compatible = "qcom,pcie-ipq5610", .data = &cfg_1_27_0 },
+ 	{ .compatible = "qcom,pcie-ipq6018", .data = &cfg_2_9_0 },
+ 	{ .compatible = "qcom,pcie-ipq8064", .data = &cfg_2_1_0 },
+ 	{ .compatible = "qcom,pcie-ipq8064-v2", .data = &cfg_2_1_0 },
+diff --git a/drivers/pinctrl/qcom/Kconfig.msm b/drivers/pinctrl/qcom/Kconfig.msm
+index 979f7d3c3b65..84ff325cfdab 100644
+--- a/drivers/pinctrl/qcom/Kconfig.msm
++++ b/drivers/pinctrl/qcom/Kconfig.msm
+@@ -95,14 +95,6 @@ config PINCTRL_IPQ9650
+ 	  Qualcomm Technologies Inc. IPQ9650 platform. Select this for
+ 	  IPQ9650.
+ 
+-config PINCTRL_IPQ5610
+-	tristate "Qualcomm Technologies, Inc. IPQ5610 pin controller driver"
+-	help
+-	  This is the pinctrl, pinmux, pinconf and gpiolib driver for
+-	  the Qualcomm Technologies Inc. TLMM block found on the
+-	  Qualcomm Technologies Inc. IPQ5610 platform. Select this for
+-	  IPQ5610.
+-
+ config PINCTRL_MSM8226
+ 	tristate "Qualcomm 8226 pin controller driver"
+ 	depends on ARM || COMPILE_TEST
+diff --git a/drivers/pinctrl/qcom/Makefile b/drivers/pinctrl/qcom/Makefile
+index d3a52b1d7637..fa8291c1f786 100644
+--- a/drivers/pinctrl/qcom/Makefile
++++ b/drivers/pinctrl/qcom/Makefile
+@@ -9,7 +9,6 @@ obj-$(CONFIG_PINCTRL_IPQ8064)	+= pinctrl-ipq8064.o
+ obj-$(CONFIG_PINCTRL_IPQ5210)	+= pinctrl-ipq5210.o
+ obj-$(CONFIG_PINCTRL_IPQ5332)	+= pinctrl-ipq5332.o
+ obj-$(CONFIG_PINCTRL_IPQ5424)	+= pinctrl-ipq5424.o
+-obj-$(CONFIG_PINCTRL_IPQ5610)	+= pinctrl-ipq5610.o
+ obj-$(CONFIG_PINCTRL_IPQ8074)	+= pinctrl-ipq8074.o
+ obj-$(CONFIG_PINCTRL_IPQ6018)	+= pinctrl-ipq6018.o
+ obj-$(CONFIG_PINCTRL_IPQ9574)	+= pinctrl-ipq9574.o
+-- 
+2.34.1
+
