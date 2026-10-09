@@ -1,0 +1,44 @@
+From ab2f6240077999498ed958eb90a674b5dc4ce542 Mon Sep 17 00:00:00 2001
+From: Poovendhan Selvaraj <poovendh@qti.qualcomm.com>
+Date: Mon, 28 Sep 2026 15:17:41 +0530
+Subject: [PATCH] drivers: soc: qcom: add QTI_HW_KEY_OPTEE config option
+
+Add a new QTI_HW_KEY_OPTEE kernel config option. When enabled,
+hw_key.c derives and distributes the HW key via direct optee call,
+in place of the existing SCM-derived keyring path, so that key
+material is never exposed to software.
+
+Change-Id: I84d153946d86554aee10d79438114e6a0403f890
+Signed-off-by: Poovendhan Selvaraj <poovendh@qti.qualcomm.com>
+(cherry picked from commit e60a6b60ea16074aa5d34b24f0701b7198e86c97)
+---
+ drivers/soc/qcom/Kconfig | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/soc/qcom/Kconfig b/drivers/soc/qcom/Kconfig
+index 23d846a286c0..960790998312 100644
+--- a/drivers/soc/qcom/Kconfig
++++ b/drivers/soc/qcom/Kconfig
+@@ -401,9 +401,19 @@ config QTI_LICENSE_MANAGER
+ config QTI_HW_KEY
+ 	bool "QTI HW Key driver"
+ 	select KEYS
++	select QTI_HW_KEY_OPTEE if OPTEE
+ 	help
+ 	  This driver requests HW Key and stores in kernel keyring
+ 
++config QTI_HW_KEY_OPTEE
++	bool "QTI HW Key OP-TEE HUK key recovery"
++	depends on QTI_HW_KEY && OPTEE
++	help
++	  Recover the hw_key_o keyring entry via the OP-TEE HUK PTA: the
++	  key is re-derived from the SW contexts and used to decrypt the
++	  offline-encrypted blob passed as hw_key.enc_blob. When disabled,
++	  hw_key derives keys through SCM as before.
++
+ config QCOM_TMEL_LOG
+ 	tristate "QCOM TMEL Log driver"
+ 	help
+-- 
+2.34.1
+
