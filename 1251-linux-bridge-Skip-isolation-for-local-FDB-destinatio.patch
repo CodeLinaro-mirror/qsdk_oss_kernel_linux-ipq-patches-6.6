@@ -1,0 +1,49 @@
+From 9f1982e789d2fa7c0ec10bf3bb8bac2b380a8f23 Mon Sep 17 00:00:00 2001
+From: Swati Singh <swasing@qti.qualcomm.com>
+Date: Wed, 2 Sep 2026 16:37:25 +0530
+Subject: [PATCH] [linux] bridge: Skip isolation for local FDB destinations
+
+Apply port isolation checks on broadcast traffic, but skip
+isolation for packets destined to local FDB entries. This
+prevents local unicast replies, such as ARP responses, from
+being blocked when services are configured across different
+UNI ports.
+
+Change-Id: Ia1c95c9fcd05521184ae93828fb1daa7428c5504
+Signed-off-by: Swati Singh <swasing@qti.qualcomm.com>
+---
+ net/bridge/br_forward.c | 3 ++-
+ net/bridge/br_input.c   | 2 +-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/net/bridge/br_forward.c b/net/bridge/br_forward.c
+index 89a2f31864c6..99c184ece738 100644
+--- a/net/bridge/br_forward.c
++++ b/net/bridge/br_forward.c
+@@ -249,8 +249,9 @@ void br_flood(struct net_bridge *br, struct sk_buff *skb,
+ 		     br_is_neigh_suppress_enabled(p, vid)))
+ 			continue;
+ 
++
+ 		/* Do not flood to non-upstream port and to ports in different sub bridge */
+-		if (!local_rcv && srcp) {
++		if (srcp) {
+ 			if (!((p->flags & BR_UPSTREAM_PORT) || (srcp->flags & BR_UPSTREAM_PORT))) {
+ 				if (p->sub_br_id != srcp->sub_br_id)
+ 					continue;
+diff --git a/net/bridge/br_input.c b/net/bridge/br_input.c
+index 612264b78781..0b2380cd18d6 100644
+--- a/net/bridge/br_input.c
++++ b/net/bridge/br_input.c
+@@ -233,7 +233,7 @@ int br_handle_frame_finish(struct net *net, struct sock *sk, struct sk_buff *skb
+ 			/* TODO: Check if sub bridge concept apply to hyfi */
+ 		} else {
+ 			dst = br_fdb_find_rcu(br, eth_hdr(skb)->h_dest, vid);
+-			if (!local_rcv && dst && dst->dst) {
++			if (!local_rcv && dst && dst->dst && !test_bit(BR_FDB_LOCAL, &dst->flags)) {
+ 				/* Do not flood to non-upstream port and to ports in different sub bridge */
+ 				if (!((p->flags & BR_UPSTREAM_PORT) || (dst->dst->flags & BR_UPSTREAM_PORT))) {
+ 					if (dst->dst->sub_br_id !=  p->sub_br_id)
+-- 
+2.34.1
+
