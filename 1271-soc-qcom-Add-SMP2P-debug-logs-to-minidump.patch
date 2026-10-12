@@ -1,0 +1,39 @@
+From e25cd1787dc5350c6e01398fb8c24d793d9f38ae Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Wed, 7 Oct 2026 20:36:53 +0530
+Subject: [PATCH] soc: qcom: Add SMP2P debug logs to minidump
+
+Add a helper function to expose the SMP2P interrupt debug log
+and its index data to minidump.
+
+Change-Id: I65dfbc510b0398758693ba21681f766a06598caf
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/soc/qcom/smp2p.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/soc/qcom/smp2p.c b/drivers/soc/qcom/smp2p.c
+index 7c99d5bf8d91..ef7a59c47afa 100644
+--- a/drivers/soc/qcom/smp2p.c
++++ b/drivers/soc/qcom/smp2p.c
+@@ -178,6 +178,17 @@ static struct smp2p_log {
+ 
+ static unsigned int smp2pintrindex;
+ 
++#ifdef CONFIG_QCA_MINIDUMP
++void minidump_get_smp2pintr(uint64_t *smp2pintr_base_addr, uint64_t *smp2pintr_size,
++			    uint64_t *smp2pintrindex_addr, uint64_t *smp2pintrindex_size)
++{
++	*smp2pintr_base_addr = (uintptr_t)smp2pintr;
++	*smp2pintr_size = sizeof(smp2pintr);
++	*smp2pintrindex_addr = (uintptr_t)&smp2pintrindex;
++	*smp2pintrindex_size = sizeof(smp2pintrindex);
++}
++#endif /* CONFIG_QCA_MINIDUMP */
++
+ static void qcom_smp2p_kick(struct qcom_smp2p *smp2p)
+ {
+ 	/* Make sure any updated data is written before the kick */
+-- 
+2.34.1
+
