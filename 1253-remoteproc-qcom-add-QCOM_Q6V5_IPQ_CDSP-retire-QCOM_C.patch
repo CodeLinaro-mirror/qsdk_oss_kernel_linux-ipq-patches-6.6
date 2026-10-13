@@ -1,0 +1,112 @@
+From 77279d0f4b4a35ded807a363e8dd71f6bc49bf63 Mon Sep 17 00:00:00 2001
+From: Vignesh Viswanathan <viswanat@qti.qualcomm.com>
+Date: Wed, 2 Sep 2026 10:25:18 +0530
+Subject: [PATCH] remoteproc: qcom: add QCOM_Q6V5_IPQ_CDSP, retire
+ QCOM_CDSP_POWER
+
+qcom_q6v5_ipq_cdsp merges the standalone CDSP power management
+driver into the CDSP PAS remoteproc loader, so it now belongs under
+drivers/remoteproc/ instead of drivers/soc/qcom/.
+
+Wire the new tristate CONFIG_QCOM_Q6V5_IPQ_CDSP symbol into
+drivers/remoteproc/{Kconfig,Makefile}, and drop the now-unused
+CONFIG_QCOM_CDSP_POWER symbol and its cdsp_power.o build rule from
+drivers/soc/qcom/{Kconfig,Makefile}.
+
+Change-Id: I099f7209fac7f6124c6d12d636cc89ae79caf70d
+Signed-off-by: Vignesh Viswanathan <viswanat@qti.qualcomm.com>
+---
+ drivers/remoteproc/Kconfig  | 24 ++++++++++++++++++++++++
+ drivers/remoteproc/Makefile |  1 +
+ drivers/soc/qcom/Kconfig    | 18 ------------------
+ drivers/soc/qcom/Makefile   |  1 -
+ 4 files changed, 25 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/remoteproc/Kconfig b/drivers/remoteproc/Kconfig
+index 9a2a79db5108..1d0b33b751bd 100644
+--- a/drivers/remoteproc/Kconfig
++++ b/drivers/remoteproc/Kconfig
+@@ -235,6 +235,30 @@ config QCOM_Q6V5_PAS
+ 	  CDSP (Compute DSP), MPSS (Modem Peripheral SubSystem), and
+ 	  SLPI (Sensor Low Power Island).
+ 
++config QCOM_Q6V5_IPQ_CDSP
++	tristate "Qualcomm IPQ CDSP Peripheral Image Loader with Power Management"
++	depends on OF && ARCH_QCOM
++	depends on QCOM_SMEM
++	depends on RPMSG_QCOM_SMD || RPMSG_QCOM_SMD=n
++	depends on RPMSG_QCOM_GLINK_SMEM || RPMSG_QCOM_GLINK_SMEM=n
++	depends on QCOM_SYSMON || QCOM_SYSMON=n
++	depends on RPMSG_QCOM_GLINK || RPMSG_QCOM_GLINK=n
++	depends on QCOM_AOSS_QMP || QCOM_AOSS_QMP=n
++	depends on REGULATOR
++	select MFD_SYSCON
++	select QCOM_PIL_INFO
++	select QCOM_MDT_LOADER
++	select QCOM_Q6V5_COMMON
++	select QCOM_RPROC_COMMON
++	select QCOM_PAS
++	help
++	  Say y here to support the TrustZone based Peripheral Image Loader
++	  for the CDSP (Compute DSP) on IPQ platforms, combined with the
++	  DCVS (Dynamic Clock and Voltage Scaling) and LPM (Low Power Mode)
++	  power management for the same subsystem. This driver owns the
++	  CDSP cx/mx regulators directly, so PAS lifecycle and power
++	  management are serialized under a single lock.
++
+ config QCOM_Q6V5_MPD
+ 	tristate "Qualcomm Hexagon based MPD model Peripheral Image Loader"
+ 	depends on OF && ARCH_QCOM
+diff --git a/drivers/remoteproc/Makefile b/drivers/remoteproc/Makefile
+index 5e893dc03440..04bc07e221ba 100644
+--- a/drivers/remoteproc/Makefile
++++ b/drivers/remoteproc/Makefile
+@@ -29,6 +29,7 @@ obj-$(CONFIG_QCOM_Q6V5_ADSP)		+= qcom_q6v5_adsp.o
+ obj-$(CONFIG_QCOM_Q6V5_MPD)		+= qcom_q6v5_mpd.o
+ obj-$(CONFIG_QCOM_Q6V5_MSS)		+= qcom_q6v5_mss.o
+ obj-$(CONFIG_QCOM_Q6V5_PAS)		+= qcom_q6v5_pas.o
++obj-$(CONFIG_QCOM_Q6V5_IPQ_CDSP)	+= qcom_q6v5_ipq_cdsp.o
+ obj-$(CONFIG_QCOM_Q6V5_WCSS)		+= qcom_q6v5_wcss.o
+ obj-$(CONFIG_QCOM_Q6V5_WCSS_SEC)	+= qcom_q6v5_wcss_sec.o
+ obj-$(CONFIG_QCOM_Q6V5_UPD)		+= qcom_q6v5_upd.o
+diff --git a/drivers/soc/qcom/Kconfig b/drivers/soc/qcom/Kconfig
+index 960790998312..3d84400be3f5 100644
+--- a/drivers/soc/qcom/Kconfig
++++ b/drivers/soc/qcom/Kconfig
+@@ -432,24 +432,6 @@ config QCOM_QDSS_BRIDGE
+ 	  MHI and USB interface.
+ 	  If unsure, say N.
+ 
+-config QCOM_CDSP_POWER
+-	tristate "Qualcomm CDSP Power Management driver"
+-	depends on ARCH_QCOM || COMPILE_TEST
+-	depends on QCOM_SMEM
+-	depends on QCOM_SMP2P
+-	depends on REGULATOR
+-	help
+-	  This driver manages power for the CDSP (Compute DSP) subsystem on
+-	  Qualcomm platforms. It handles DCVS (Dynamic Clock and Voltage Scaling)
+-	  for voltage scaling via SMEM/SMP2P, and LPM (Low Power Mode) for power
+-	  collapse/restore via MPM handshake.
+-
+-	  The driver coordinates with the cdsp_rproc driver for shared regulator
+-	  access and provides runtime voltage scaling and power management for
+-	  the CDSP subsystem.
+-
+-	  Say M here if you want to include support for CDSP power management.
+-
+ source "drivers/soc/qcom/tmelcom/Kconfig"
+ 
+ endmenu
+diff --git a/drivers/soc/qcom/Makefile b/drivers/soc/qcom/Makefile
+index 253d6cd277e0..fa336697d135 100644
+--- a/drivers/soc/qcom/Makefile
++++ b/drivers/soc/qcom/Makefile
+@@ -49,4 +49,3 @@ obj-$(CONFIG_QCOM_TMELCOM) += tmelcom/
+ obj-$(CONFIG_QCOM_TMEL_LOG) += tmel_log.o
+ CFLAGS_qdss_bridge.o += -Wno-error=format
+ obj-$(CONFIG_QCOM_QDSS_BRIDGE)	+= qdss_bridge.o
+-obj-$(CONFIG_QCOM_CDSP_POWER) += cdsp_power.o
+-- 
+2.34.1
+
