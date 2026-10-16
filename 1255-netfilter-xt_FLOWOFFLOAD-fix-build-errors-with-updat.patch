@@ -1,0 +1,55 @@
+From fc3b7e63df7e8605d4405a8fd29b8ed875745b7b Mon Sep 17 00:00:00 2001
+From: Atchaya R <ratchaya@qti.qualcomm.com>
+Date: Tue, 13 Oct 2026 11:22:24 +0530
+Subject: [PATCH] netfilter: xt_FLOWOFFLOAD: fix build errors with updated
+ kernel API
+
+Two API changes in nf_flow_table.h broke compilation of xt_FLOWOFFLOAD.c:
+
+1. nf_flow_pppoe_proto() signature changed from returning __be16 directly
+   to returning bool and writing the protocol value via a pointer parameter.
+   Update the call site to pass &proto as the second argument and return
+   NF_ACCEPT on failure.
+
+2. flow_offload_route_init() return type changed from int to void, making
+   the previous error-check comparison invalid. Remove the conditional and
+   call the function directly.
+
+Fixes:
+  error: too few arguments to function 'nf_flow_pppoe_proto'
+  error: void value not ignored as it ought to be
+
+Change-Id: I000d37bc9c62c96c3c1c6cb10eb5dabcb9e6812e
+Signed-off-by: Atchaya R <ratchaya@qti.qualcomm.com>
+---
+ net/netfilter/xt_FLOWOFFLOAD.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/net/netfilter/xt_FLOWOFFLOAD.c b/net/netfilter/xt_FLOWOFFLOAD.c
+index 0c56c32fb62a..82f872700ecb 100644
+--- a/net/netfilter/xt_FLOWOFFLOAD.c
++++ b/net/netfilter/xt_FLOWOFFLOAD.c
+@@ -62,7 +62,9 @@ xt_flowoffload_net_hook(void *priv, struct sk_buff *skb,
+ 		proto = veth->h_vlan_encapsulated_proto;
+ 		break;
+ 	case htons(ETH_P_PPP_SES):
+-		proto = nf_flow_pppoe_proto(skb);
++		/* nf_flow_pppoe_proto fills proto and returns false on failure */
++		if (!nf_flow_pppoe_proto(skb, &proto))
++			return NF_ACCEPT;
+ 		break;
+ 	default:
+ 		proto = skb->protocol;
+@@ -518,8 +520,7 @@ flowoffload_tg(struct sk_buff *skb, const struct xt_action_param *par)
+ 	if (!flow)
+ 		goto err_flow_alloc;
+ 
+-	if (flow_offload_route_init(flow, &route) < 0)
+-		goto err_flow_add;
++	flow_offload_route_init(flow, &route);
+ 
+ 	if (tcph) {
+ 		ct->proto.tcp.seen[0].flags |= IP_CT_TCP_FLAG_BE_LIBERAL;
+-- 
+2.34.1
+
