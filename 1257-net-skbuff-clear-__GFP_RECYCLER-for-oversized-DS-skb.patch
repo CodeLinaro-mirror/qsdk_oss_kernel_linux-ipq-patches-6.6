@@ -1,0 +1,70 @@
+From c1eb99a9195b73e35dc2002cdf22c7d556ffb8ae Mon Sep 17 00:00:00 2001
+From: Parikshit Gune <pgune@qti.qualcomm.com>
+Date: Mon, 19 Oct 2026 22:40:58 +0530
+Subject: [PATCH] net: skbuff: clear __GFP_RECYCLER for oversized DS skb
+ allocations
+
+__netdev_alloc_skb_no_skb_reset() and __netdev_alloc_skb_fast()
+set __GFP_RECYCLER unconditionally even when length > skb_recycle_size.
+kmalloc_reserve() then always returns a fixed SKB_DATA_CACHE_SIZE buffer,
+smaller than requested, causing a HW DMA buffer overrun. Hence, clear the
+flag for oversized lengths in skb alloc APIs.
+
+Change-Id: I7f15f79cf331f7362537cf42a6e66787418d6eed
+Signed-off-by: Parikshit Gune <pgune@qti.qualcomm.com>
+---
+ net/core/skbuff.c | 28 +++++++++++++++++++++++++---
+ 1 file changed, 25 insertions(+), 3 deletions(-)
+
+diff --git a/net/core/skbuff.c b/net/core/skbuff.c
+index 49acd7d832e6..42a2f1b16a8a 100644
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -994,8 +994,19 @@ struct sk_buff *__netdev_alloc_skb_fast(struct net_device *dev,
+ 	}
+ 
+ 	len = skb_recycle_size;
+-	if (unlikely(length > skb_recycle_size))
++	if (unlikely(length > skb_recycle_size)) {
+ 		len = length;
++		/*
++		 * The requested length is larger than the recycler data
++		 * cache object size. The recycler path in kmalloc_reserve()
++		 * always allocates a fixed SKB_DATA_CACHE_SIZE buffer when
++		 * __GFP_RECYCLER is set, which would be smaller than the
++		 * requested length and lead to a buffer overrun when the
++		 * hardware DMAs into it. Clear __GFP_RECYCLER so the larger
++		 * buffer is allocated correctly.
++		 */
++		gfp_mask = (gfp_mask & (~__GFP_RECYCLER));
++	}
+ 
+ 	skb = __alloc_skb(len + NET_SKB_PAD, gfp_mask,
+ 			  SKB_ALLOC_RX, NUMA_NO_NODE);
+@@ -1110,10 +1121,21 @@ struct sk_buff *__netdev_alloc_skb_no_skb_reset(struct net_device *dev,
+ 	}
+ 
+ 	len = skb_recycle_size;
+-	if (unlikely(length > skb_recycle_size))
++	gfp_mask |= __GFP_RECYCLER;
++	if (unlikely(length > skb_recycle_size)) {
+ 		len = length;
++		/*
++		 * The requested length is larger than the recycler data
++		 * cache object size. The recycler path in kmalloc_reserve()
++		 * always allocates a fixed SKB_DATA_CACHE_SIZE buffer when
++		 * __GFP_RECYCLER is set, which would be smaller than the
++		 * requested length and lead to a buffer overrun when the
++		 * hardware DMAs into it. Clear __GFP_RECYCLER so the larger
++		 * buffer is allocated correctly.
++		 */
++		gfp_mask = (gfp_mask & (~__GFP_RECYCLER));
++	}
+ 
+-	gfp_mask |= __GFP_RECYCLER;
+ 	skb = __alloc_skb(len + NET_SKB_PAD, gfp_mask,
+ 				SKB_ALLOC_RX, NUMA_NO_NODE);
+ 	if (!skb)
+-- 
+2.34.1
+
