@@ -1,0 +1,48 @@
+From 91f72b0e6444897486665f660fcaed5025b70350 Mon Sep 17 00:00:00 2001
+From: Luo Jie <luoj@qti.qualcomm.com>
+Date: Thu, 24 Sep 2026 21:13:28 +0800
+Subject: [PATCH] driver: clk: qcom: Add the IPQ56210 NSSCC Kconfig
+
+Change-Id: Ib0aa2b881a1234675d7b25f042d3726a67504e01
+Signed-off-by: Luo Jie <luoj@qti.qualcomm.com>
+---
+ drivers/clk/qcom/Kconfig  | 10 ++++++++++
+ drivers/clk/qcom/Makefile |  1 +
+ 2 files changed, 11 insertions(+)
+
+diff --git a/drivers/clk/qcom/Kconfig b/drivers/clk/qcom/Kconfig
+index e91f958253fb..04fdcb46cf36 100644
+--- a/drivers/clk/qcom/Kconfig
++++ b/drivers/clk/qcom/Kconfig
+@@ -269,6 +269,16 @@ config IPQ_NSSCC_5332
+         help
+           Support for NSS clock controller on ipq5332 devices.
+ 
++config IPQ_NSSCC_5610
++	tristate "IPQ5610 NSS Clock Controller"
++	depends on IPQ_GCC_5610
++	help
++	  Support for NSS clock controller on ipq5610 devices.
++	  NSSCC receives the clock sources from GCC, CMN PLL and UNIPHY (PCS).
++	  It in turn supplies the clocks and resets to the networking hardware.
++	  Say Y or M if you want to enable networking function on the
++	  IPQ5610 devices.
++
+ config IPQ_NSSCC_9574
+         tristate "IPQ9574 NSS Clock Controller"
+         depends on IPQ_GCC_9574
+diff --git a/drivers/clk/qcom/Makefile b/drivers/clk/qcom/Makefile
+index 3775771f62bd..97253afe3d1b 100644
+--- a/drivers/clk/qcom/Makefile
++++ b/drivers/clk/qcom/Makefile
+@@ -40,6 +40,7 @@ obj-$(CONFIG_IPQ_GCC_9650) += gcc-ipq9650.o
+ obj-$(CONFIG_IPQ_NSSCC_5210) += nsscc-ipq5210.o
+ obj-$(CONFIG_IPQ_NSSCC_5332) += nsscc-ipq5332.o
+ obj-$(CONFIG_IPQ_NSSCC_5424) += nsscc-ipq5424.o
++obj-$(CONFIG_IPQ_NSSCC_5610) += nsscc-ipq5610.o
+ obj-$(CONFIG_IPQ_NSSCC_9574) += nsscc-ipq9574.o
+ obj-$(CONFIG_IPQ_NSSCC_9650) += nsscc-ipq9650.o
+ obj-$(CONFIG_IPQ_LCC_806X) += lcc-ipq806x.o
+-- 
+2.34.1
+
