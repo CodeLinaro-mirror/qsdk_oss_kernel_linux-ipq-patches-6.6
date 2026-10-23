@@ -1,0 +1,90 @@
+From fa4ee5c10a4fab10c9f65aeb3da8e14a2e4a5f95 Mon Sep 17 00:00:00 2001
+From: Luo Jie <luoj@qti.qualcomm.com>
+Date: Tue, 13 Oct 2026 16:45:55 +0800
+Subject: [PATCH] clk: qcom: rcg2: Add clk_rcg2_prepare_ops and
+ clk_rcg2_fm_prepare_ops
+
+Some clock controllers, such as the one in the QCE2204 switch, are
+accessed over MDIO, and MDIO reads can sleep. The clock framework calls
+.is_enabled from atomic context during clk_disable_unused(), so these
+controllers must not read the hardware status in .is_enabled.
+
+Add clk_rcg2_prepare_ops and clk_rcg2_fm_prepare_ops. They are the same
+as clk_rcg2_ops and clk_rcg2_fm_ops, except the hardware status check
+is done in .is_prepared, which may sleep. This follows
+clk_branch2_prepare_ops.
+
+Change-Id: I28381c49e519b4bbaa67187ee55c7a5fb28ce888
+Signed-off-by: Luo Jie <luoj@qti.qualcomm.com>
+---
+ drivers/clk/qcom/clk-rcg.h  |  2 ++
+ drivers/clk/qcom/clk-rcg2.c | 31 +++++++++++++++++++++++++++++++
+ 2 files changed, 33 insertions(+)
+
+diff --git a/drivers/clk/qcom/clk-rcg.h b/drivers/clk/qcom/clk-rcg.h
+index 80f1f4fcd52a..2018df9bb18b 100644
+--- a/drivers/clk/qcom/clk-rcg.h
++++ b/drivers/clk/qcom/clk-rcg.h
+@@ -189,8 +189,10 @@ struct clk_rcg2_gfx3d {
+ 	container_of(to_clk_rcg2(_hw), struct clk_rcg2_gfx3d, rcg)
+ 
+ extern const struct clk_ops clk_rcg2_ops;
++extern const struct clk_ops clk_rcg2_prepare_ops;
+ extern const struct clk_ops clk_rcg2_floor_ops;
+ extern const struct clk_ops clk_rcg2_fm_ops;
++extern const struct clk_ops clk_rcg2_fm_prepare_ops;
+ extern const struct clk_ops clk_rcg2_mux_closest_ops;
+ extern const struct clk_ops clk_edp_pixel_ops;
+ extern const struct clk_ops clk_byte_ops;
+diff --git a/drivers/clk/qcom/clk-rcg2.c b/drivers/clk/qcom/clk-rcg2.c
+index d1aef6d10c07..4ff3f390c381 100644
+--- a/drivers/clk/qcom/clk-rcg2.c
++++ b/drivers/clk/qcom/clk-rcg2.c
+@@ -740,6 +740,23 @@ const struct clk_ops clk_rcg2_ops = {
+ };
+ EXPORT_SYMBOL_GPL(clk_rcg2_ops);
+ 
++/*
++ * Same as clk_rcg2_ops but for clock controllers behind a sleeping bus
++ * (e.g. MDIO), where hardware status can't be read from atomic context.
++ */
++const struct clk_ops clk_rcg2_prepare_ops = {
++	.is_prepared = clk_rcg2_is_enabled,
++	.get_parent = clk_rcg2_get_parent,
++	.set_parent = clk_rcg2_set_parent,
++	.recalc_rate = clk_rcg2_recalc_rate,
++	.determine_rate = clk_rcg2_determine_rate,
++	.set_rate = clk_rcg2_set_rate,
++	.set_rate_and_parent = clk_rcg2_set_rate_and_parent,
++	.get_duty_cycle = clk_rcg2_get_duty_cycle,
++	.set_duty_cycle = clk_rcg2_set_duty_cycle,
++};
++EXPORT_SYMBOL_GPL(clk_rcg2_prepare_ops);
++
+ const struct clk_ops clk_rcg2_floor_ops = {
+ 	.is_enabled = clk_rcg2_is_enabled,
+ 	.get_parent = clk_rcg2_get_parent,
+@@ -766,6 +783,20 @@ const struct clk_ops clk_rcg2_fm_ops = {
+ };
+ EXPORT_SYMBOL_GPL(clk_rcg2_fm_ops);
+ 
++/* Same as clk_rcg2_fm_ops but for clock controllers behind a sleeping bus */
++const struct clk_ops clk_rcg2_fm_prepare_ops = {
++	.is_prepared = clk_rcg2_is_enabled,
++	.get_parent = clk_rcg2_get_parent,
++	.set_parent = clk_rcg2_set_parent,
++	.recalc_rate = clk_rcg2_recalc_rate,
++	.determine_rate = clk_rcg2_fm_determine_rate,
++	.set_rate = clk_rcg2_fm_set_rate,
++	.set_rate_and_parent = clk_rcg2_fm_set_rate_and_parent,
++	.get_duty_cycle = clk_rcg2_get_duty_cycle,
++	.set_duty_cycle = clk_rcg2_set_duty_cycle,
++};
++EXPORT_SYMBOL_GPL(clk_rcg2_fm_prepare_ops);
++
+ const struct clk_ops clk_rcg2_mux_closest_ops = {
+ 	.determine_rate = __clk_mux_determine_rate_closest,
+ 	.get_parent = clk_rcg2_get_parent,
+-- 
+2.34.1
+
