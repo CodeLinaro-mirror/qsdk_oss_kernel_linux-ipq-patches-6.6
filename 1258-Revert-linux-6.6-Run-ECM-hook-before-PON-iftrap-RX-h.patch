@@ -1,0 +1,90 @@
+From 02faf31e28556f45da6ba72dd977c4cf70ee1ebf Mon Sep 17 00:00:00 2001
+From: Akansha Verma <akanverm@qti.qualcomm.com>
+Date: Tue, 27 Oct 2026 03:32:31 -0700
+Subject: [PATCH] Revert "[linux-6.6]: Run ECM hook before PON iftrap RX hook"
+
+This reverts commit 5924ec18fbcb3962868c9c10aaac92485f156e5a.
+
+Reason for revert: Reverting since require PON changes are not merged.
+
+Change-Id: Ic44d81a0413a228cef3c98f600c5301a32d92d26
+Signed-off-by: Akansha Verma <akanverm@qti.qualcomm.com>
+---
+ net/core/dev.c | 38 ++++++++++++++------------------------
+ 1 file changed, 14 insertions(+), 24 deletions(-)
+
+diff --git a/net/core/dev.c b/net/core/dev.c
+index 2fe723f012bc..71b159be96b0 100644
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -4869,13 +4869,8 @@ bool dev_fast_xmit(struct sk_buff *skb,
+ 
+ 	rcu_read_lock_bh();
+ 
+-	/*
+-	 * A packet that has already been decided to be fast forwarded/transmitted
+-	 * has had its Tx/Rx PON editing taken care of on that path already, so
+-	 * pon iftrap processing is not required for it.
+-	 */
+ #ifdef CONFIG_IPQ_PON
+-	if (!(skb->fast_forwarded || skb->fast_xmit) && (pon_iftrap_process_tx(skb, DEV_FAST_XMIT))) {
++	if (pon_iftrap_process_tx(skb, DEV_FAST_XMIT)) {
+ 		rcu_read_unlock_bh();
+ 		return true;
+ 	}
+@@ -4978,13 +4973,8 @@ int __dev_queue_xmit(struct sk_buff *skb, struct net_device *sb_dev)
+ 
+ 	skb_update_prio(skb);
+ 
+-	/*
+-	 * A packet that has already been decided to be fast forwarded/transmitted
+-	 * has had its Tx/Rx PON editing taken care of on that path already, so
+-	 * pon iftrap processing is not required for it.
+-	 */
+ #ifdef CONFIG_IPQ_PON
+-	if (!(skb->fast_forwarded || skb->fast_xmit) && pon_iftrap_process_tx(skb, __DEV_QUEUE_XMIT)) {
++	if (pon_iftrap_process_tx(skb, __DEV_QUEUE_XMIT)) {
+ 		rc = NETDEV_TX_OK;
+ 		goto out;
+ 	}
+@@ -6104,18 +6094,6 @@ static int __netif_receive_skb_core(struct sk_buff **pskb, bool pfmemalloc,
+ 		}
+ 	}
+ 
+-	if (likely(!fast_tc_filter)) {
+-		fast_recv = rcu_dereference(athrs_fast_nat_recv);
+-		if (fast_recv) {
+-			if (fast_recv(skb)) {
+-				ret = NET_RX_SUCCESS;
+-				goto out;
+-			}
+-		}
+-	}
+-
+-	skb_recycler_clear_fast_flags(skb);
+-
+ #ifdef CONFIG_IPQ_PON
+ 	if (pon_iftrap_enable) {
+ 		int (*pon_uni_recv)(struct sk_buff *skb);
+@@ -6130,6 +6108,18 @@ static int __netif_receive_skb_core(struct sk_buff **pskb, bool pfmemalloc,
+ 	}
+ #endif
+ 
++	if (likely(!fast_tc_filter)) {
++		fast_recv = rcu_dereference(athrs_fast_nat_recv);
++		if (fast_recv) {
++			if (fast_recv(skb)) {
++				ret = NET_RX_SUCCESS;
++				goto out;
++			}
++		}
++	}
++
++	skb_recycler_clear_fast_flags(skb);
++
+ 	if (eth_type_vlan(skb->protocol)) {
+ 		skb = skb_vlan_untag(skb);
+ 		if (unlikely(!skb))
+-- 
+2.34.1
+
